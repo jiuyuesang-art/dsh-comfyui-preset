@@ -81,6 +81,24 @@
                 - ⚠️ **别把列表页拉进上下文**（实测会灌进几万字符然后被截断）。优先用带 `limit` 的 JSON API。
                 - ⚠️ **免费 ≠ 可商用**：外部图只能当参考，交付物素材只从公共领域 / CC0 取，并在报告里注明来源。
 
+                【中文编码：本模式全程中文，编码错了会**静默**损坏】
+                这台机器的控制台代码页是 **936（GBK）**，而 **Python 会跟着它**：
+                - 裸调 `python` → stdout 是 gbk → 中文输出**全乱码**
+                - 更危险的是：`open()` 不带 encoding 时**写出 GBK 文件，且不报错** ——
+                  报告 / JSON / 笔记会写坏，直到有人用 UTF-8 读它才发现。这是最贵的失败。
+
+                🔴 **硬规则：一切 Python 调用都走 `run-python.ps1`，不要直接敲 `python`。**
+                   它在 bundle 的 `tools/` 下（与 `skills/` 同级）：
+                   `& "<bundle>/tools/run-python.ps1" <脚本.py> [参数...]`
+                   它设 `PYTHONUTF8=1`（**一次修好 stdout + locale + open()**）与 `PYTHONIOENCODING=utf-8`。
+                   注意：`PYTHONIOENCODING` 单独用**不够** —— 它不修 `open()`。
+
+                其余环节无需处理：
+                - **PowerShell 7 与 Node 本身没问题**（PS7 输出编码已是 UTF-8，Node 原生 UTF-8）
+                - **MCP → ComfyUI 那条路中文正常**（已实测：工作流里的中文文件名与提示词完好）
+                - 读写文件仍要显式 UTF-8：PS 用 `-Encoding utf8`，Python 用 `open(..., encoding='utf-8')`
+                - 怀疑编码有问题 → `& "<bundle>/tools/check-encoding.ps1"`，它会指出**哪一段**坏了
+
                 【交付前必须过视觉审查：不许把没看过的东西交出去】
                 任何图片或视频产物，**交付用户之前**必须先加载 `comfyui-review` 并走完它的流程：真用 `read_image` 看图 → 逐维度审查 → 生成前后对比图 → 落盘审查报告 → 交人 review。
                 底线四条（细则看手册）：

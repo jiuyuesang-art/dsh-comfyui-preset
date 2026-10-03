@@ -79,24 +79,29 @@ whenToUse: 出图/改图/生成视频完成后；用户提到 审查 / 检查 / 
 
 ## 4. 两个脚本（都在本 skill 的 `scripts/` 下）
 
+⚠️ **不要直接敲 `python`** —— 这台机器的控制台是 GBK 代码页，裸调 python 会让中文输出乱码，
+更糟的是 `open()` 会**写出 GBK 文件且不报错**。**一律走 `run-python.ps1`**：
+
 ```powershell
 # 取本 skill 目录后：
-$S = "<本 skill 所在目录>/scripts"
+$S      = "<本 skill 所在目录>/scripts"
+$RUNPY  = "<bundle 根>/tools/run-python.ps1"   # 与 skills/ 同级
 
 # ① 视频抽帧 + 接触表（默认 9 帧，均匀取每段中点，避开首尾黑帧）
-python "$S/review.py" frames <视频路径> <输出目录> --count 9 --cols 3 --sheet <接触表路径>
+& $RUNPY "$S/review.py" frames <视频路径> <输出目录> --count 9 --cols 3 --sheet <接触表路径>
 #   同时输出一行 META {json}：时长/分辨率/帧率/编码/音频轨/帧文件名 —— 直接抄进报告
 
 # ② 前后对比图（并排 + 差异×4 增强）
-python "$S/review.py" compare <前> <后> --out <输出路径> `
+& $RUNPY "$S/review.py" compare <前> <后> --out <输出路径> `
     --label-before "基准" --label-after "本次 v003" --title "010_0010 关键帧 前后对比" --mode both
 
 # ③ 多图接触表（例如把各帧或各候选拼一张）
-python "$S/review.py" sheet <图片或目录...> --out <输出路径> --cols 3 --title "候选对比"
+& $RUNPY "$S/review.py" sheet <图片或目录...> --out <输出路径> --cols 3 --title "候选对比"
 ```
 
-> Python 需要 Pillow。优先用 PATH 上的 `python`；若不可用，用 `load_workspace_dependencies` 取捆绑 Python 的绝对路径。
-> 脚本已强制 UTF-8 输出（不然 Windows 上中文会乱码）。
+> `run-python.ps1` 设 `PYTHONUTF8=1`（**同时修好 stdout、locale 与 `open()`**）+ `PYTHONIOENCODING=utf-8`。
+> 它还会自己找 python：PATH → 捆绑运行时 → 常见位置；都不行时可用 `-PythonPath` 显式指定。
+> `review.py` 自己也做了 UTF-8 重构（双保险），但你**写的任何临时 Python** 没有这层保护 —— 所以包装器是必需的。
 > `compare` 的 `--mode`：`side` 只并排 / `diff` 只差异 / `both` 三者都出（默认，推荐）。
 
 ---

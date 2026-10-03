@@ -82,6 +82,7 @@
 | **全局 MCP 连接器 `custom-comfymcp`** | 要用 ComfyUI 工具则必需 | 它是**全局连接器**，与预设无关；缺了 `mcp__comfymcp__*` 就没有 |
 | **PowerShell 7** | ⚠️ **必需** | 四个 `.ps1` 都声明 `#requires -Version 7`，PS 5.1 下会**失败关闭** |
 | **Python 3 + Pillow** | 要用视觉审查则必需 | `review.py` 需要；PATH 上没有就靠 `load_workspace_dependencies` 取捆绑 Python |
+| ⚠️ **Python 的 UTF-8 模式** | **必需（否则静默损坏）** | Windows 上 Python 默认跟随控制台代码页（简体中文机是 GBK），`open()` 会**写出 GBK 文件且不报错**。**必须走 `tools/run-python.ps1`**（它设 `PYTHONUTF8=1`），不要直接敲 `python`。自检：`tools/check-encoding.ps1` |
 | **ffmpeg / ffprobe** | 要审视频则必需 | 抽帧用 |
 
 ---

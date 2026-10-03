@@ -170,6 +170,68 @@ persona 里加了硬规则，`comfyui-review` 承载清单，`review.py` 承载�
 
 **版权红线**（写进 skill）：公共领域/CC0 可直接用于交付物；他人作品**只能当参考看**，不能进交付物、不能描图；需要直接用外部素材时**只从公共领域取**，并注明来源。
 
+**⑨ 中文编码保障：杜绝静默损坏**（2026-10-04 加入）
+
+本模式全程中文（提示词、报告、文件名），编码错了会产生两种损失——第二种**不报错**：
+
+| 损失 | 现象 |
+|---|---|
+| 输出乱码 | 看不懂 → 重跑一轮 → 白烧 token |
+| **`open()` 写出 GBK 文件** | **内容坏了但不报错** → 直到有人用 UTF-8 读才发现 ← 更贵 |
+
+**先逐段实测，才找到真正的破口**：
+
+| 环节 | 实测结果 |
+|---|---|
+| PowerShell 7 字面量 / 输出 / 写文件 | ✅ 正常（`$OutputEncoding` = utf-8，写文件无 BOM） |
+| Node（含 emoji） | ✅ 完美 |
+| **MCP → ComfyUI** | ✅ **正常**（`list_workflow_slots` 返回的中文文件名与提示词完好） |
+| **Python（裸调）** | ❌ `sys.stdout.encoding = gbk`、`locale = cp936`、**`open()` 写 GBK** |
+
+**根因**：控制台代码页是 **936（GBK）**，而 **Python 是唯一会跟随它的环节**。
+
+**实测对照**（同一段中文，只差一个环境变量）：
+
+| | 写出的字节 | UTF-8 读回 |
+|---|---|---|
+| 裸调 | 16 字节 `D6 D0 CE C4…`（**GBK**） | ❌ 乱码 |
+| `PYTHONUTF8=1` | 22 字节 `E4 B8 AD E6 96 87…`（**UTF-8**） | ✅ 正常 |
+
+> ⚠️ **`PYTHONIOENCODING=utf-8` 单独用不够**：它只改 stdout/stderr，`locale.getpreferredencoding()` 仍是 cp936，
+> **`open()` 照样写 GBK**。只有 `PYTHONUTF8=1`（Python UTF-8 模式）能一次修好**输出 + locale + `open()`**。
+
+**解法：`tools/run-python.ps1`——统一入口**
+
+```powershell
+& "<bundle>/tools/run-python.ps1" <脚本.py> [参数...]
+& "<bundle>/tools/run-python.ps1" -c "print('中文 ✅')"
+```
+
+它设好 `PYTHONUTF8=1` + `PYTHONIOENCODING=utf-8`，对齐 PS 侧编码，自动探测 python，
+并**原样转发 `--` 前缀参数**（实测 `--count 9 --sheet x.png` 不被 PowerShell 吃掉）。
+**persona 里写成了硬规则：一切 Python 调用都走它，不要直接敲 `python`。**
+
+**`tools/check-encoding.ps1`——链路自检**
+
+逐段探测并指出**哪一段**坏了（不是笼统说"编码有问题"）。当前实测：
+
+```
+✅ PS 写文件往返        42 字节（期望 42，无 BOM）· 读回正常
+✅ PS 输出/控制台编码    utf-8
+✅ Node 输出            中文✅
+ℹ️  Python 默认 stdout   gbk   ← 已知事实（所以必须走包装器）
+ℹ️  Python 默认 locale   cp936 ← 它决定 open() 用什么编码
+✅ run-python 中文输出 / UTF-8 模式 / 写文件编码（42 字节，读回一致）
+✅ MCP → ComfyUI 中文    实测正常
+✅ DSH 读写工具中文       实测正常
+🎉 编码链路正常
+```
+
+> **两个设计细节，都是修过 bug 得来的**：
+> ① **期望值一律运行时算，不硬编码** —— 第一版写死了"22 字节"，换了个探测串后**永久假警报**；
+> ② **三态而不是布尔** —— 裸调 python 的 GBK 是**已知事实**而非故障，
+> 当成失败会让工具**永远报错**，等于没有。
+
 ### 关于第三方插件：选本预设**不会**关掉它们
 
 这一条有**注册表层面的事实**，不是推测：
