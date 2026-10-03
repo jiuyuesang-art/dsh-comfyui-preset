@@ -1,0 +1,19 @@
+# ── 打包产物（由 tools/pack-preset.ps1 生成，不入库）────────────────────
+# 新克隆的仓库里没有这两个；跑一次 pack-preset.ps1 就会生成。
+# verify-preset.ps1 在没有 MANIFEST.json 时也能工作（它从 cordis.patch.yml 读模块清单）。
+dist/
+MANIFEST.json
+
+# ── 临时 / 备份 ────────────────────────────────────────────────────────
+*.bak
+*.tmp
+*.zip
+*.sha256
+node_modules/
+
+# ── 编辑器 / 系统 ──────────────────────────────────────────────────────
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store

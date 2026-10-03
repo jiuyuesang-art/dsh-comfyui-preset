@@ -1,0 +1,12 @@
+# 固定行尾为 LF。
+# 不加这个的话：git 默认会在 Windows 检出时把 LF 转成 CRLF，
+# 于是每次改动都显示"整个文件都变了"，且跨机器哈希对不上。
+* text=auto eol=lf
+
+# 明确二进制，避免被当文本处理
+*.png binary
+*.jpg binary
+*.zip binary
+
+# GitHub 语言统计：把仓库标记为 Markdown 为主
+*.md linguist-documentation

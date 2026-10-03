@@ -1,0 +1,426 @@
+---
+name: comfyui-project-layout
+description: 专业动画项目的文件管理规范（目录结构 / 命名 / 版本 / 归档）。任何时候要新建项目、新建序列或镜头、决定产物存哪、给文件命名、更新或覆盖已有文件、回滚旧版本时加载。含固定目录骨架、`项目/序列/镜头` 命名法、**更新前先把旧文件移进同目录 old/ 的强制规则**、可复现侧车，以及三个可直接调用的脚本。
+whenToUse: 用户提到 建项目 / 新建镜头 / 存哪 / 目录 / 命名 / 文件管理 / 版本 / 覆盖 / 更新文件 / 回滚 / 归档 / 旧版本 时
+---
+
+# 动画项目文件管理规范
+
+> 这套规范不是我自己编的：目录骨架取自 [CGWire 的管线目录提案](https://blog.cg-wire.com/cg-pipeline-a-proposal-for-your-file-hierarchy/)（Kitsu 创始人，服务大量动画/VFX 工作室），命名法取自 [Blender Studio 官方命名规范](https://studio.blender.org/tools/naming-conventions/shared-folder-structure)（真实在产项目的公开规范）。
+> 末尾 §8 列了全部出处。
+
+---
+
+## 0. 五条硬规则（违反任何一条，文件树就废了）
+
+**① 资产与镜头必须分两棵树。**
+`10_assets/`（角色、道具、场景，可复用）与 `30_shots/`（镜头，消耗资产）**永不混放**。
+这是所有专业管线的共同底线——混在一起，改一个角色就得满树找它出现在哪些镜头里。
+
+**② 命名全小写、无空格、无特殊字符。**
+只用 `_`（分隔层级）和 `-`（分隔层级内的字段）。软件兼容性与排序都靠这条。
+
+**③ 永不覆盖。** 正常迭代用版本递增：`-v001` → `-v002` → `-v003`（3 位零填充）。
+覆盖 = 历史消失 = 无法回滚。
+
+**④ 确实必须覆盖时，先把旧文件移进【同目录的 old/】。**
+> **这是本项目对你（用户）的明确承诺，也是一条强制规则。**
+> 任何"更新/重写同一个文件名"的操作，**动手前必须先跑 `scripts/safe-write.ps1`**：
+
+```powershell
+& "<skill目录>/scripts/safe-write.ps1" "<目标路径>" -Quiet
+# 旧文件被移到 <目标所在目录>/old/<原名>.<YYYYMMDD-HHMMSS><扩展名>
+# 然后再写你的新文件
+```
+
+- **old/ 与被替换文件同级**（不是集中到一个全局 archive），回滚一次 `Move-Item` 就完事
+- **带时间戳**，所以同一路径反复更新也不会把上一代备份冲掉
+- `old/` 里保留的是**可用的旧文件本体**，随时能取回来当新版本的基准
+
+**⑤ 每产出一个产物，就写一份可复现侧车。**
+`010_0010-key-v001.png` 旁边必须有 `010_0010-key-v001.meta.json`，记录 prompt / seed / 步数 / cfg / 模型。
+**没有侧车，旧文件就只是图像，无法当"基准"重做。** 用 `scripts/write-meta.ps1` 生成。
+
+---
+
+## 1. 目录骨架
+
+```
+projects/<project>/
+├─ project.json                项目元数据（fps / 基准分辨率 / 风格 / 模型基线）
+├─ 00_dev/                     企划与设定
+│   ├─ reference/              参考资料
+│   └─ style/                  风格板、色彩基调
+├─ 10_assets/                  ★ 可复用资产（与镜头严格分离）
+│   ├─ characters/<asset>/
+│   ├─ props/<asset>/
+│   └─ environments/<asset>/
+├─ 20_pre/                     前期
+│   ├─ script/                 剧本
+│   ├─ storyboard/             分镜（分镜图 / 分镜头本），按序列分目录
+│   └─ previz/                 动态分镜
+├─ 30_shots/                   ★ 镜头主树（主要工作区）
+│   └─ <seq>/<shot>/
+│       ├─ 10_ref/             参考、设定图
+│       ├─ 20_layout/          构图 / 关键帧草稿
+│       ├─ 30_key/             关键帧定稿
+│       ├─ 40_video/           视频片段
+│       ├─ 50_audio/           该镜的声音（见下方说明）
+│       ├─ 60_review/          ★ 审查报告与前后对比图（见 `comfyui-review`）
+│       └─ （各环节下按需出现 old/，由 safe-write.ps1 自动创建）
+├─ 40_editorial/               剪辑与声音
+│   ├─ audio/                  全片级声音：BGM、剧伴、混音、对白总轨
+│   ├─ edit/                   剪辑工程（各集/各版本）
+│   ├─ export/                 进展导出（播放用）
+│   ├─ edl/                    EDL / XML / OTIO —— 把剪辑时间线交给下游
+│   ├─ current/                ★ 各镜最新预览的汇集处（见下方「current 技巧」）
+│   └─ deliver/                待批准/已批准的成片
+└─ 90_deliver/                 对外交付
+```
+
+### `current/` 技巧（单人项目同样适用，强烈建议）
+
+**问题**：剪辑工程引用的是各镜的预览片段，但镜头天天在改，剪辑每次打开都要重新指路径。
+
+**做法**：每次某镜出新预览（playblast / preview），就**拷一份进 `40_editorial/current/`**，命名固定为 `<seq>_<shot>-preview.<ext>`。
+**剪辑工程永远只读 `current/`** —— 于是打开剪辑看到的永远是全片最新状态，永远不用改链接。
+
+> 出处：Les Fées Spéciales 技术博客 [An introduction to organizing project files](https://lacuisine.tech/an-introduction-to-organizing-project-files)。
+> 代价是占一份额外磁盘（预览片段通常很小），收益是"剪辑永远是对的"。
+
+### 关于 per-shot 的 `50_audio/`
+
+日式二维动画把**音響（アフレコ / 劇伴 / 効果音）当作独立部门**，声音**不进 shot 目录**。
+本项目**有意偏离**：因为 H3 这类模型是**音画同一次前向生成**的，每个镜头的音频天然属于该镜头。
+约定因此拆成两半：
+
+- **该镜生成/对口的声音** → `30_shots/<seq>/<shot>/50_audio/`
+- **全片级声音**（BGM、剧伴、混音、最终对白总轨）→ `40_editorial/audio/`
+
+### 中文术语对照（避免口头说法打架）
+
+⚠️ **"分镜"是个被用混的词，本项目严格区分两者**：
+
+| 说法 | 实际是什么 | 落在哪 |
+|---|---|---|
+| **分镜 / 故事板**（絵コンテ, storyboard） | 用**画面**说明影像构成的分镜图格 | `20_pre/storyboard/<seq>/` |
+| **镜头表 / 分镜头脚本**（shot list） | 用**表格**把剧本翻译成镜头语言：镜号 / 景别 / 镜头运动 / 画面描述 / 对白 | `20_pre/script/` 或 `30_shots/shots.csv` |
+| **项目** | 整棵树 | `projects/<project>/` |
+| **序列 / 场**（シーン） | 一组相关镜头的分组层 | `30_shots/<seq>/`，命名 `NNN_name` 如 `010_intro` |
+| **镜头**（カット / shot） | **工作单元**：摄影机不停机的一段 | `30_shots/<seq>/<shot>/`，命名 `NNN_NNNN` 如 `010_0010` |
+| **环节 / 任务** | 该镜下的具体工序 | 镜头下的 `10_ref` … `50_audio` |
+| **资产** | 会被多个镜头复用的东西 | `10_assets/{characters,props,environments}/` |
+
+> **sequence 与 shot 的边界**：序列是一次连续的时空单元（一个场景、一段动作），镜头是摄影机不停机的一段。
+> 判断标准：**中间有没有"切"**？有切就是另一个镜头；只是镜头内运动，还是同一个镜头。
+>
+> **为什么"分镜"不能既指 storyboard 又指 shot list**：前者是**画面**、属于前期设计；后者是**表格**、是镜头清单。
+> 两者混用会导致"分镜放哪"这种问题没法回答。本项目一律：**分镜=storyboard 进 `20_pre/`，镜头表=shot list**。
+
+> `sequence` 与 `shot` 的边界：**序列是一次连续的时空单元**（一个场景、一段动作），**镜头是摄影机不停机的一段**。
+> 判断标准：**中间有没有"切"**？有切就是另一个镜头；只是镜头内运动，还是同一个镜头。
+
+---
+
+## 2. 命名规范
+
+### 2.1 目录名
+
+| 层级 | 格式 | 例子 |
+|---|---|---|
+| 序列 | `NNN_name` | `010_intro` |
+| 镜头 | `NNN_NNNN`（序列号_镜头号） | `010_0010` |
+| 资产 | 小写连字符 | `main-girl`、`school-uniform` |
+
+### 2.2 文件名
+
+```
+<seq号>_<shot号>-<环节>-v<版本>[-<帧号>].<扩展名>
+```
+
+| 例子 | 含义 |
+|---|---|
+| `010_0010-key-v001.png` | 010 序列的 0010 镜头，关键帧，第 1 版 |
+| `010_0010-key-v002.png` | 同一张关键帧的第 2 版（**不是覆盖 v001**） |
+| `010_0010-video-v001.mp4` | 该镜头的视频片段第 1 版 |
+| `010_0010-key-v001-007.png` | 关键帧第 1 版的第 7 帧（序列帧用） |
+
+⚠️ **文件名只用数字段**（`010_0010-…`），**不要把序列的描述部分带进去**（不要 `010_intro_010_0010-…`）。
+描述性文字属于**目录名**，文件名求短、求稳定、求可排序。
+
+### 2.3 环节代号（element）
+
+| 代号 | 用途 | 对应二维动画环节 |
+|---|---|---|
+| `ref` | 参考图、设定图 | 設定 |
+| `layout` | 构图、草稿 | レイアウト（决定机位/角度/角色大小与朝向/背景信息量） |
+| `key` | 关键帧定稿 | 原画（key animation，"動きの要"） |
+| `video` | 视频片段（本项目的 AI 生成环节） | 撮影/合成后的动段 |
+| `audio` | 该镜的声音 | 音響（本项目按镜归属，见 §1） |
+| `edit` | 剪辑版本 | 編集 |
+| `deliver` | 交付件 | 納品 |
+
+### 2.4 状态后缀（固定小词表，不许自创）
+
+版本号只说"第几版"，**不说"这版是什么状态"**。状态用固定后缀，且**只用这五个词**：
+
+| 后缀 | 含义 |
+|---|---|
+| `_wip` | 进行中，不得交给下游 |
+| `_review` | 待评审 |
+| `_approved` | 已通过 |
+| `_final` | 已交付（**只给真正交付出去的东西**） |
+| `_rejected` | 明确否决（留着是为了不重犯） |
+
+```
+010_0010-key-v003_approved.png
+010_0010-video-v002_review.mp4
+```
+
+❌ **禁止**：`_final2`、`_new`、`_real`、`_good`、`_last`、`_fix`。
+这类词是"死亡螺旋"的起点——真实案例：`scene04_final.mp4 → scene04_final_new.mp4 → scene04_final_revised_real.mp4`。
+**内容变了就升版本号，不要改形容词。**
+
+### 2.5 数字与帧号
+
+| 项 | 规则 |
+|---|---|
+| 版本 | **3 位零填充**：`v001`、`v012` |
+| 镜头号 | **4 位零填充**：`0010`、`0020` |
+| 序列号 | **3 位零填充**：`010`、`020` |
+| **创建时按 10 递增** | 镜头建 `0010 / 0020 / 0030`，序列建 `010 / 020 / 030` —— 这样**剪辑中途插一镜**只需叫 `0015`，不必给整条序列改名 |
+| 帧号 | **4 位零填充**，**从 `1001` 起**（避开 0、给 handles 留空间、被评审与合成工具广泛支持）。同一版本内起点**不许中途变** |
+
+> 为什么零填充是硬要求：不填充时字典序会排成 `0001 → 0010 → 0011 → 0002`，
+> 人眼、文件浏览器、渲染队列三者对"顺序"的认知就会打架。
+
+> 关于目录的数字前缀：本项目各环节用 `10_ / 20_ / 30_ …`（**按 10 递增**）。
+> 有人反对给目录加数字前缀，理由是"中途插入新环节要全盘重编号"——那个问题只在**连续编号**（`1_ 2_ 3_`）时成立；
+> **按 10 递增后插一个 `25_` 即可，不需要重编号**（同一条理由也用于镜头号）。
+
+---
+
+## 3. old/ 归档规则（本项目最核心的一条）
+
+> **与业界惯例的关系，先说清楚**：Blender Studio 真实在产目录里用的名字是 **`_archive/`**
+> （例：`shared/editorial/export/_archive/gold-edit-v001_storyboard.mp4`）。
+> 而调研显示 **`_old` / `_backup` / `.trash` 这类叫法查不到权威出处**，语义模糊、没有回收策略，容易变成永久垃圾。
+> **本项目按用户明确要求使用 `old/`** —— 这是有意识的取舍：名字更短、中文语境更直觉。
+> 但**只准用 `old/` 这一个归档位置**，不许再出现 `_backup` / `.trash` / `bak` 之类第二种叫法。
+
+### 3.1 什么时候用
+
+| 场景 | 做法 |
+|---|---|
+| 正常迭代出新一版 | **版本递增** `-v001`→`-v002`，**不覆盖**，不需要 old/ |
+| 必须替换同一路径（下游要固定文件名、修错、重出） | ✅ **先跑 `safe-write.ps1`**，再写 |
+| 用户说"改一下这个文件" | 先归档再改；或者直接出新版本号 |
+
+### 3.2 结果长什么样
+
+```
+30_shots/010_intro/010_0010/30_key/
+├─ 010_0010-key-v001.png          ← 新写的内容
+└─ old/
+   ├─ 010_0010-key-v001.20261003-182945.png      ← 第一次更新前的
+   └─ 010_0010-key-v001.20261003-183501.png      ← 第二次更新前的
+```
+
+### 3.3 回滚
+
+⚠️ **别直接 `Move-Item` 到原位** —— 那里现在已经有一个新版本了，会报「文件已存在」而失败。
+正确姿势是**先把当前版本也归档，再把目标版本移回来**，两边都不丢：
+
+```powershell
+$S    = "<本 skill 目录>/scripts"
+$dir  = "projects/my-anime/30_shots/010_intro/010_0010/30_key"
+$name = "010_0010-key-v001.png"
+$stem = [IO.Path]::GetFileNameWithoutExtension($name)
+
+# 0) 【先挑】要恢复的那一版 —— 必须在归档当前版本之前挑，
+#    否则刚归档的当前版本会变成 old/ 里最新的一份，就被挑中了。
+$pick = Get-ChildItem "$dir/old" -Filter "$stem.*.png" |
+        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+
+# 1) 归档当前版本（图和侧车会成对带同一时间戳进 old/）
+& "$S/safe-write.ps1" "$dir/$name" -Quiet | Out-Null
+
+# 2) 把挑好的那一版移回原位；配对的侧车共享同一个 BaseName
+$pickMeta = Join-Path "$dir/old" "$($pick.BaseName).meta.json"
+Move-Item $pick.FullName "$dir/$name"
+if (Test-Path $pickMeta) { Move-Item $pickMeta "$dir/$stem.meta.json" }
+```
+
+> 回滚是对称的：跑完上面这段，**当前版本变成你要恢复的那版，而被换下的那版又躺进了 `old/`** —— 两边都不丢，可以反复来回切。
+> 只想硬覆盖、不保留现场：`Move-Item -Force`。但那样当前版本直接消失，不建议。
+
+### 3.4 脚本行为（已实测）
+
+| 情形 | 结果 |
+|---|---|
+| 目标不存在 | `NOOP` —— 不建 old/、不报错，照常写 |
+| 目标存在 | `ARCHIVED\t<新路径>` —— 移走 |
+| 同一秒内连续归档 | 自动加 `-1`、`-2` 序号，**绝不互相覆盖** |
+| `-DryRun` | 只报告，不动任何文件 |
+| `-Quiet` | 只输出一行机器可读结果，便于 Agent 解析 |
+
+---
+
+## 4. 可复现侧车（`.meta.json`）
+
+**规范**：每产出一个图/视频，同目录写一份同名 `.meta.json`。
+
+```json
+{
+  "file": "010_0010-key-v001.png",
+  "created": "2026-10-03T18:31:30+08:00",
+  "sizeBytes": 16,
+  "sha256": "4540bb9c…",
+  "params": {
+    "prompt": "雨夜街头，霓虹倒影",
+    "seed": 42, "steps": 25, "cfg": 1.5,
+    "model": "qwen_image_2.1_Q6_K.gguf"
+  }
+}
+```
+
+**必填参数**（按生成方式给全）：
+
+| 类型 | 字段 |
+|---|---|
+| 图像 | `prompt` `negative` `seed` `steps` `cfg` `sampler` `scheduler` `width` `height` `model` `lora` |
+| 视频 | 上述去掉部分 + `durationSec` `frames` `fps` |
+| 两者都要 | `workflow`（工作流文件路径）、`template`（模板名）、`sourceShot` |
+
+### ⚠️ 两个必须知道的坑
+
+**① batch 生成时，逐图的实际 seed 会丢。**
+ComfyUI 的 PNG 元数据（`tEXt` 块里的 `prompt` 与 `workflow`）在一次 batch 里是**所有图共用一份**的，里面只有**初始 seed**。
+"我看中了第 77 张" 这种情况，光靠 PNG 元数据**可能复现不出那一张**。
+（出处：[ComfyUI Discussion #1124](https://github.com/Comfy-Org/ComfyUI/discussions/1124)）
+
+→ **对策**：batch 场景**必须为每张图单独记实际 seed**。若一次 batch 出 N 张，就在侧车里写数组：
+
+```json
+{ "prompt": "…", "steps": 25, "cfg": 1.5,
+  "seedStart": 42, "batch": 8,
+  "perImageSeeds": [42, 43, 44, 45, 46, 47, 48, 49] }
+```
+
+**② 只记模型文件名不够，要记 hash。**
+模型会被改名、重下、同名不同内容。**内容 hash 才唯一**。
+→ `models` 建议写成对象，每项含 `file` + `hash`（SHA256 或 Civitai 的 AutoV2 那 10 位）+ 可选 `source`：
+
+```json
+{ "models": {
+    "unet": { "file": "qwen_image_2.1_Q6_K.gguf", "hash": "sha256:…" },
+    "clip": { "file": "qwen3vl_8b_int8_convrot.safetensors", "hash": "sha256:…" },
+    "lora": { "file": "minimax_h3_turbo_8step_v1.0.safetensors", "hash": "sha256:…" }
+} }
+```
+
+### 完整归档=四件套
+
+一张成图**不算**归档。真正能"取旧版本当基准"的最小集是：
+
+| # | 件 | 为什么 |
+|---|---|---|
+| 1 | 成图 / 成片 | 结果本身 |
+| 2 | **workflow JSON** | 图是怎么连出来的；没有它就只能重连节点 |
+| 3 | **`params.json`（即本侧车）** | 关键参数与逐图 seed；没有它只能靠猜 |
+| 4 | **`models.json`（可并入侧车）** | 模型与 LoRA 的 hash；没有它模型一改名就复现不出 |
+
+> `workflow` 字段就填第 2 件的路径。跑工作流时**先把那份 JSON 存进该镜目录**（如 `…/_workflow/010_0010-key-v003.workflow.json`），再填进侧车。
+
+> 侧车默认**不覆盖**已存在的那份（避免误伤历史）。确实要重写才加 `-Force`。
+> 批量补 hash 可用：`Get-FileHash <模型路径> -Algorithm SHA256`。
+
+---
+
+## 5. 脚本用法（四个，都在本 skill 的 `scripts/` 下）
+
+先取本 skill 的目录，再调用：
+
+```powershell
+$S = "<本 skill 所在目录>/scripts"     # 路径可从 skill 工具给出的资源基底推出
+
+# ① 建项目骨架（或加序列/镜头）
+& "$S/new-project.ps1" my-anime -Title "我的动画"          # 建项目
+& "$S/new-project.ps1" my-anime -Sequence 010_intro         # 加序列
+& "$S/new-project.ps1" my-anime -Sequence 010_intro -Shot 010_0010   # 加镜头
+
+# ② 🔀 管线状态探针 —— 激活路由的「进度信号」，创作类任务动手前先跑它
+& "$S/pipeline-status.ps1"                    # 扫全部项目，报阶段 + 该激活哪些专家 + 下一步
+& "$S/pipeline-status.ps1" my-anime           # 只看一个项目
+& "$S/pipeline-status.ps1" my-anime -Json     # 机器可读
+
+# ③ 覆盖前归档（写文件之前必跑）
+& "$S/safe-write.ps1" "<目标路径>" -Quiet
+
+# ④ 写可复现侧车
+& "$S/write-meta.ps1" -For "<产物路径>" -Json '{"prompt":"…","seed":42,"steps":25}'
+```
+
+**`new-project.ps1` 的命名校验**（会自动拒绝）：项目名含空格/大写/以连字符开头、序列不是 `NNN_name`、镜头不是 `NNN_NNNN`、给了 `-Shot` 没给 `-Sequence`。
+
+### `pipeline-status.ps1` 报的阶段是什么意思
+
+它是**激活路由的门控输入**：把"工程走到哪一步"变成一条命令就能拿到的事实，免得靠翻目录猜。
+
+| 阶段 | 含义 | 该激活 |
+|---|---|---|
+| `empty` | 镜头还没开工 | project-layout |
+| `ref` | 只有参考图 | project-layout（+ 要写词则 prompt-craft） |
+| `layout` | 有构图草稿，未定关键帧 | mcp-ops + review |
+| `key-needs-meta` | 有关键帧但**缺侧车** → 不可复现 | project-layout |
+| `key-needs-review` | 关键帧就绪但**没审过** | 🔴 review（强制） |
+| `key-rework` | 审查判定 NEEDS_WORK / FAIL | prompt-craft + mcp-ops |
+| `key-done` | 审过了，可交付 | —— |
+| `video-needs-review` / `video-rework` / `video-done` | 同上，针对 `40_video` | review + minimax-h3-docs |
+
+> 判定从 `60_review/` 里最新的那份报告的「判定：」一行抓取；抓不到就当作未审。
+
+---
+
+## 6. 一个镜头从零到出片的完整流程
+
+```
+1) 建项目      new-project.ps1 <slug> -Title "…"
+2) 建序列/镜头  new-project.ps1 <slug> -Sequence 010_intro -Shot 010_0010
+3) 放参考图    30_shots/010_intro/010_0010/10_ref/     ← 命名 010_0010-ref-v001.png
+4) 出构图草稿  …/20_layout/010_0010-layout-v001.png     ← 用 comfyui-mcp-ops 的五步流程
+5) 定关键帧    …/30_key/010_0010-key-v001.png           ← **紧接着写侧车**
+6) 出视频      …/40_video/010_0010-video-v001.mp4       ← H3，先看 minimax-h3-docs 的显存告警
+7) 配音/音效   …/50_audio/010_0010-audio-v001.wav
+8) 剪辑       40_editorial/export/
+9) 交付       90_deliver/
+   每一步产出后都要：写侧车；若不得不覆盖同名文件，先跑 safe-write.ps1
+```
+
+---
+
+## 7. 与 ComfyUI 的衔接（关键）
+
+`mcp__comfymcp__fetch_outputs` 的 `out_dir` **不要随便指**，按产物性质落到对应环节目录：
+
+| 产物 | out_dir |
+|---|---|
+| 构图 / 草稿 | `projects/<p>/30_shots/<seq>/<shot>/20_layout` |
+| 关键帧定稿 | `…/30_key` |
+| 视频片段 | `…/40_video` |
+| 角色三视图 / 设定图 | `projects/<p>/10_assets/characters/<asset>` |
+| 分镜图 | `projects/<p>/20_pre/storyboard/<seq>` |
+| 实验 / 试参数 | `projects/<p>/00_dev/` （**不要**污染正式镜头目录） |
+
+而 `SaveImage` 节点的 `filename_prefix` 建议直接写规范名（如 `010_0010-key-v001`），
+这样 ComfyUI 侧的原生产物就是合规命名，`fetch_outputs` 拉回来不用改名。
+
+---
+
+## 8. 依据出处
+
+> 本规范每条硬规则的出处、以及**三处有意偏离业界**的说明，都在
+> [`references/sources.md`](references/sources.md)（按需查阅，不随本正文加载）。
+> 完整调研简报见 [`references/pipeline-research.md`](references/pipeline-research.md)。
+
+需要引用权威依据时（例如向用户解释"为什么必须两棵树"）再去读那两个文件。

@@ -1,0 +1,40 @@
+{
+  "name": "dsh-comfyui-preset",
+  "version": "1.1.0",
+  "private": true,
+  "description": "ComfyUI 创作模式预设 for DeepSeek Harness：常驻创作操作准则 + ComfyUI MCP 快速调用决策表 + 视觉质检 + 动画项目文件管理 + 艺术参考检索 + ComfyUI / Qwen Image 2.1 / MiniMax H3 官方文档离线知识库。",
+  "type": "module",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "engines": {
+      "dsh": ">=0.1.7-rc.1"
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.0-rc.2": "compatible"
+      }
+    }
+  },
+  "files": [
+    "cordis.patch.yml",
+    "skills/",
+    "tools/",
+    "README.md",
+    "INSTALL.md"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "agent-preset",
+    "comfyui",
+    "mcp"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  }
+}
