@@ -136,6 +136,78 @@ $S = "<本 skill 所在目录>/scripts"
 
 ---
 
+## 4.5 取图的完整流程（**预设站点只是起点，不是边界**）
+
+要什么就去搜什么。**不要把下面的站点清单当成穷举** —— 它只是"已知能通"的起点。
+
+### 三级取图策略（按顺序走）
+
+**① 多引擎搜图 —— 直接搜画面**
+
+| 手段 | 怎么用 |
+|---|---|
+| `web_search` / `multi_search` | 搜「角色名 + reference」「姿势 参考」「<作品名> 設定画」等；要交叉验证用 `multi_search` |
+| **图片搜索直达** | `image.baidu.com`、`cn.bing.com/images` —— **想不出词时直接搜画面，比文字检索高效得多** |
+| `platform_search` | Bilibili / YouTube（作画、运镜参考）、GitHub（工作流、节点） |
+| `web_fetch` | 已知确切 URL 时直接取（API 端点见 §3 / §4） |
+
+**② 被屏蔽时的兜底：用 computer use 模仿真实用户**
+
+很多站点**拒绝爬虫但允许浏览器**（Pixiv / ArtStation / 需登录的站 / 强 Cloudflare 的站）。
+本机装了 `dsh-computer-use-win`，工具是 **`mcp__wincu__*`**：
+
+```
+windows_computer_use_list_windows / activate_window   打开并聚焦浏览器
+windows_computer_use_type_text                       在搜索框输入关键词
+windows_computer_use_snapshot / ocr                  看结果（截图 + UI 树 / OCR）
+windows_computer_use_click / scroll                  像真人一样点击、翻页
+```
+
+> ⚠️ **这是兜底手段，不是首选**：它慢、吃 token，只在 HTTP 路径**确实不通**时才用。
+> ⚠️ **不要用它做违反站点条款的事**（绕登录墙、批量抓取、绕付费墙）。
+> 它只是"用浏览器看"，**不是爬虫**。
+> ⚠️ 用完**把观察如实写进报告**：说明这张图是"通过浏览器人工路径获取的"。
+
+**③ 🔴 AI 评估后才选 —— 拉到的第一张不一定能用**
+
+**下载或截图后，必须用 `read_image` 实际看图再决定**：
+
+| 评估项 | 要求 | 不合格的后果 |
+|---|---|---|
+| **主体对不对** | 是要的那个角色 / 物体，不是同名不同人 | 生成出完全错的东西 |
+| **清晰度** | 能看清五官与结构 | 糊图**直接拖垮**生成质量 |
+| **角度** | 做角色参考时：正脸 > 侧脸 > 全身小图 | 侧脸参考出不了正脸 |
+| **无水印 / 无遮挡** | 水印会**渗进生成结果** | 成品带别人水印 |
+| **是否 AI 生成** | 有些"参考图"本身就是 AI 画的 | 会把它自己的缺陷一起学过来 |
+| **版权可用性** | 见 §7 | 交付物出问题 |
+
+**不合格就换下一张，不要将就** —— **参考图质量决定生成质量的上限**，
+而"凑合用的参考"比"没有参考"更糟：它会**稳定地**把你带偏。
+
+### 下载模型 / 工作流时的镜像
+
+**HF 官方站从本机不可达**（实测超时）。要下模型或工作流，走镜像：
+
+| 站点 | 实测 | 用法 |
+|---|---|---|
+| ❌ `huggingface.co` | **超时不可达** | 不要直接试 |
+| ✅ **`hf-mirror.com`** | **200 可达** | 把 HF 的 URL **域名替换**即可：`huggingface.co/<repo>` → `hf-mirror.com/<repo>` |
+| ✅ **`modelscope.cn`**（魔搭） | **200 可达** | 国内模型库，很多热门模型有镜像仓 |
+| ❌ `github.com` | **超时不可达** | 需要 GitHub 上的工作流/节点时，走镜像或让用户开代理 |
+
+```powershell
+# 例：HF 的模型 → 换成镜像域名再交给 download_model
+# https://huggingface.co/<owner>/<repo>/resolve/main/<file>
+# → https://hf-mirror.com/<owner>/<repo>/resolve/main/<file>
+mcp__comfymcp__download_model  url=<替换域名后的 URL>  relative_path=models/<类别>
+```
+
+> ⚠️ **下载前先问用户** —— 多 GB 的下载要走用户的带宽与磁盘。
+> ⚠️ 下载**可能很慢**，用 `wait=false` 拿 `download_id` 再轮询，别阻塞在一处。
+> ⚠️ 镜像站**不保证与官方完全同步**；下完核对文件大小，必要时比对 hash。
+
+---
+
 ## 5. 检索工具与两个陷阱
 
 ### 工具怎么选

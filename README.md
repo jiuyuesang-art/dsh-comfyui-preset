@@ -7,7 +7,7 @@
 > ### 这是什么
 >
 > 它把 DSH 从"通用编码助手"变成**本地 ComfyUI 创作工作台**：
-> 8 个专家手册按需加载、产物按专业动画项目规范落盘、交付前强制看一遍再交给你。
+> 9 个专家手册按需加载、产物按专业动画项目规范落盘、交付前强制看一遍再交给你。
 >
 > **它不包含** DSH 本体、ComfyUI 本体、模型权重 —— 那些是前提条件（见 [INSTALL.md](INSTALL.md)）。
 >
@@ -21,8 +21,8 @@
 | 组成 | 内容 |
 |---|---|
 | **1 个预设** | `id: comfyui`，显示名【ComfyUI 创作模式】，roster 排位 `order: 5`（在 standard/ptc/minimal/cordis 之后） |
-| **8 个 skill（知识库 + 工具）** | `comfyui-mcp-ops`（操作手册）· `comfyui-prompt-craft`（提示词工程手册）· **`comfyui-review`（视觉质检 + 抽帧/对比脚本）** · **`comfyui-project-layout`（动画项目文件管理 + 4 个脚本）** · **`art-reference`（艺术参考检索 + 可达性实测表）** · `comfyui-docs`（ComfyUI 官方文档快照 + 全站索引）· `qwen-image-2-1-docs` · `minimax-h3-docs` |
-| **15 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · workspace-dependencies · skill-filesystem · tool-skill · compaction 组(3) · ask-user · todo · web · present |
+| **9 个 skill（知识库 + 工具）** | `comfyui-mcp-ops`（操作手册）· `comfyui-prompt-craft`（提示词工程 + 参考接线决策）· **`comfyui-perf`（显存与性能策略）** · **`comfyui-review`（视觉质检 + 抽帧/对比脚本）** · **`comfyui-project-layout`（动画项目文件管理 + 4 个脚本）** · **`art-reference`（艺术参考检索 + 取图流程 + 镜像下载）** · `comfyui-docs`（ComfyUI 官方文档快照 + 全站索引）· `qwen-image-2-1-docs` · `minimax-h3-docs` |
+| **14 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · skill-filesystem · tool-skill · compaction 组(3) · ask-user · todo · web · present |
 
 > `workspace-dependencies` 是给视觉审查兜底的：PATH 上没 Python/Pillow 时，用它取捆绑 Python 的绝对路径。
 
@@ -72,11 +72,11 @@ persona 里加了硬规则，`comfyui-review` 承载清单，`review.py` 承载�
 
 **⑦ MoE 式稀疏激活：按工程进度决定加载哪个专家**（2026-10-03 加入）
 
-把上下文当 MoE 来管：8 个手册 = 8 个专家，**按门控信号稀疏激活**，不再"一次全背"。
+把上下文当 MoE 来管：9 个手册 = 9 个专家，**按门控信号稀疏激活**，不再"一次全背"。
 
 | MoE 概念 | 本预设的对应物 |
 |---|---|
-| 专家 | 8 个 skill + 它们的 references |
+| 专家 | 9 个 skill + 它们的 references |
 | **门控信号** | **① 意图信号**（用户说了什么）⊕ **② 进度信号**（工程走到哪一步） |
 | 门控网络 | persona 的激活路由表 + `pipeline-status.ps1` |
 | 稀疏激活 | 只装当前阶段需要的；配方**按节定点读** |
@@ -253,7 +253,7 @@ persona 里加了硬规则，`comfyui-review` 承载清单，`review.py` 承载�
 
 | 部分 | 更新后 | 依据 |
 |---|---|---|
-| **bundle 本体 + 8 个 skill + 脚本** | ✅ **不受影响** | 它在 `Documents\...`，应用本体在 `D:\Deepseek\resources\app.asar` —— **两个不同的根** |
+| **bundle 本体 + 9 个 skill + 脚本** | ✅ **不受影响** | 它在 `Documents\...`，应用本体在 `D:\Deepseek\resources\app.asar` —— **两个不同的根** |
 | **依赖的 18 个 DSH 内部模块** | ⚠️ 可能改名/移除 | 实测：这些模块**不在 profile 的 `node_modules` 里**，**只存在于 `app.asar` 内**（asar 头解析：12,967 文件 / 529 包）。→ **预设与 DSH 版本的内部模块集硬耦合** |
 | **profile 注册**（link + bundles 列表） | ⚠️ 可能失效 | profile 里是**相对符号链接** `..\..\..\..\Documents\...`，锚在 `C:\Users\<你>\` —— **移动/改名工作区就会悬空** |
 | **PowerShell 7 配置** | ⚠️ **可能被重置** | 🔴 **它在 profile 的 `cordis.patch.yml`，根本不在 bundle 内** —— 这条最容易漏，且漏了以后四个脚本**全部拒绝执行** |
@@ -351,7 +351,7 @@ plugin_manager  action=install_bundle   target=<本目录的绝对路径>
 - 问它「**这张图哪里有问题**」 → 答复必须**指向画面里看得见的具体位置**（「招牌第 3 个字缺右边一竖」），出现「整体效果不错」「质量尚可」这类**没有落点的评价即为违规**
 - 给一段**视频**让它审 → 报告里必须写明「基于 N 帧抽样、未逐帧、音频仅核对技术规格」；**如果它声称看了每一帧、或评价了音频内容，就是编的**
 
-> 判断技能是否加载成功：模型回复里会体现手册内容（例如直接说出 `mcp__comfymcp__validate_workflow` 这类工具全名）。若它仍在猜工具名，说明 8 个 skill 没进技能目录 —— 见下节排错。
+> 判断技能是否加载成功：模型回复里会体现手册内容（例如直接说出 `mcp__comfymcp__validate_workflow` 这类工具全名）。若它仍在猜工具名，说明 9 个 skill 没进技能目录 —— 见下节排错。
 
 ---
 
@@ -399,7 +399,7 @@ plugin_manager  action=install_bundle   target=<本目录的绝对路径>
 |---|---|
 | 预设选择器里没有【ComfyUI 创作模式】 | 确认 `list_plugins` 里有 `preset-comfyui` 行；有行但选不到 → 该行激活失败，看它的 diagnostic |
 | 现有会话里没变化 | 正常。必须新开会话 |
-| 8 个 skill 一个都不出现 | `customSkillDirs` 的 `!!js` 没解析出来（bundle 没真正装进 profile 的 `node_modules`），或 skill 目录层级不对（必须是 `<skills>/<name>/SKILL.md`，不能嵌套更深） |
+| 9 个 skill 一个都不出现 | `customSkillDirs` 的 `!!js` 没解析出来（bundle 没真正装进 profile 的 `node_modules`），或 skill 目录层级不对（必须是 `<skills>/<name>/SKILL.md`，不能嵌套更深） |
 | skill 出现了但描述不对 | frontmatter 的 `name` / `description` 不合法会被**静默跳过**（模型目录不报逐条诊断）——用 `node _scratch\validate-skills.cjs comfyui-preset\skills` 自查 |
 | MCP 工具不见了 | 是全局连接器的事，与预设无关。查 `mcp_connector_status`，或重写 `custom-comfymcp` 记录 |
 | `comfy templates fetch` 超时 / WinError 10054 | 图库在线刷新被断。**改用本地模板目录**：`…\site-packages\comfyui_workflow_templates_json\templates\` |
@@ -420,15 +420,15 @@ plugin_manager  action=install_bundle   target=<本目录的绝对路径>
 | 预设行已注册且**激活** | `list_plugins` → `include:preset-comfyui`，`enabled: true`，**`fiberPhase: "active"`**，与 4 个出厂预设状态一致 |
 | 补丁方言合法 | `_scratch/validate-preset.cjs` 20 项断言全过（含 `!!js` 惰性标签、行 id 唯一性、与 package.json 一致性） |
 | 16 个插件包名全部存在 | 逐个对 asar 清单核验，缺失 0 |
-| 8 个 skill 层级与 frontmatter 合法 | `_scratch/validate-skills.cjs` 0 失败 0 提醒（含 name=kebab-case、与目录名一致、references 引用全部存在） |
-| 知识库路径解析 | 用修正后的表达式语义对 **3 种 `baseUrl` 形态**（目录路径 / 目录 URL / 文件名路径）实测，**均能解析出 8 个 skill** |
+| 9 个 skill 层级与 frontmatter 合法 | `_scratch/validate-skills.cjs` 0 失败 0 提醒（含 name=kebab-case、与目录名一致、references 引用全部存在） |
+| 知识库路径解析 | 用修正后的表达式语义对 **3 种 `baseUrl` 形态**（目录路径 / 目录 URL / 文件名路径）实测，**均能解析出 9 个 skill** |
 | 手册里的 Qwen 2.1 配方 | 拿真图跑 `validate_workflow` → **`valid: true`、`error_count: 0`、`spends_credits: false`** |
 | 全局 MCP 连接器在位 | `list_plugins` → `mcp-custom-comfymcp` 为 `active`，故 `mcp__comfymcp__*` 对新预设的会话可见 |
 
 **未能实测（只能在你的新会话里验）⚠️**
 
 - 预设的 **15 行插件真正挂载**。预设行本身 `active`，但插件树是**按会话**惰性挂载的（"Preset revisions are eagerly activated once and shared by their selecting Agents"），本会话已绑死 `cordis`，无法切换到新预设。
-- 8 个 skill 是否真的出现在**模型技能目录**里。
+- 9 个 skill 是否真的出现在**模型技能目录**里。
 - `customSkillDirs` 的 `!!js` 在真实 preset 作用域下的求值结果（我只能用等价语义离线复现，见上表）。
 
 > 🔁 **建议：装完后重启一次 DSH 再新开会话。** 理由：`!!js` 表达式源码是在 bundle 补丁**应用时**被抓进 Loader 树的；本文件在我改完表达式后又重新 enable 过一次，但重启能 100% 确保读到的是修正后的版本。重启是一次性的，之后改工作区里的文件即生效（因为是 `link:`）。
@@ -511,5 +511,5 @@ comfyui-preset/
 配套的自查脚本（在 DSH 工作区，不在本 bundle 内）：
 
 - `_scratch/validate-preset.cjs comfyui-preset/cordis.patch.yml` —— 校验补丁方言、行 id 唯一性、`!!js` 标签、与 package.json 的一致性
-- `_scratch/validate-skills.cjs comfyui-preset/skills` —— 校验 8 个 skill 的层级与 frontmatter
+- `_scratch/validate-skills.cjs comfyui-preset/skills` —— 校验 9 个 skill 的层级与 frontmatter
 - `_scratch/validate-markdown.cjs comfyui-preset` —— 校验 35 个 markdown 的表格/围栏/标题结构

@@ -19,7 +19,7 @@
 # 3. 精简：不含 plan-mode / goal / delegation / ralph 组。创作场景下这些组会带来
 #    十几个额外工具，拖慢每一步的工具扫描。
 # 4. knowledge base 通过 skill-filesystem 的 customSkillDirs 指向本 bundle 自带的
-#    skills/ 目录（8 个 skill），路径用 createRequire 锚定 profile 的 package.json
+#    skills/ 目录（9 个 skill），路径用 createRequire 锚定 profile 的 package.json
 #    解析，不写死绝对路径 —— 同一手法见 dsh-computer-use-win 的 cordis.patch.yml。
 
 - insert:
@@ -43,7 +43,7 @@
                 你是运行在本地 ComfyUI 上的 AI 创作助手，专精图像与视频生成。
 
                 【激活路由：稀疏加载，不要把 8 个手册全背下来】
-                本模式有 8 个专家手册，全加载约 46K token。门控有两个信号：
+                本模式有 9 个专家手册，全加载约 46K token。门控有两个信号：
                 **意图信号**（用户要做什么）+ **进度信号**（工程走到哪一步）。
 
                 ① **进度信号** —— 跑一次就有，**不要自己翻目录猜**：
@@ -127,6 +127,23 @@
 
                 禁止：`masterpiece` / `best quality` / `8k` / 加权负向词这类 SD1.5 时代的咒语（对这两个模型**完全无效**）；写「提示词写作教程」；讲基础概念；「你可以试试…」这类含糊试探。最多问 1 个真正影响结果的关键问题，其余按合理默认值替你决定并在设计说明里点一句。
 
+                【跑重任务前：查显存、能省则省；🔴 达标不了就停下问人】
+                显存是本机唯一稀缺资源（实测：**11.91 GB 总量，常只剩 ~8 GB**；而内存有 128 GB）。
+                - **跑本地生图 / 生视频前必须先 `system_stats` 看 `vram_free`**；不够就 `free_memory`，再复查确认
+                - **分层**：生图/视频模型本体放**显存**；**文本编码器等轻量模型设 `device=cpu` 放内存**
+                  （`CLIPLoader` 有 `device` 槽位，枚举 `default`/`cpu`）—— 它只在开头跑一次，白占显存最不划算
+                - **先出预览版**：本机已装加速 LoRA（`Qwen-Image-Edit-Lightning-4steps`、
+                  `minimax_h3_turbo_8step`、`h3_ref2v_turbo_4step`）—— 挂上降步数快速验证构图/角色，
+                  确认后再卸掉、回到正常步数定稿
+                - 细节与阈值见 `comfyui-perf`
+
+                🔴 **硬约束达标不了时：优先停下问用户，不要凭感觉继续。**
+                触发条件（任一）：显存清理后仍不足 · 工作流校验不通过且缺本机没有的节点 ·
+                模型官方站与镜像站都下不下来 · **找不到参考图而任务要求角色一致性** ·
+                同一任务连续失败两次以上 · 规模明显超出本机能力。
+                停下时要给用户：**卡在哪（具体数字/节点/站点）+ 试过什么 + 2–3 个带代价的方案 + 你的建议**。
+                **决定权在用户** —— 与视觉审查的「采纳权在人」是同一条原则。
+
                 【⛔ 全程只用 MCP 操作 ComfyUI，不许绕过它】
                 所有 ComfyUI 操作**必须走 `mcp__comfymcp__*` 工具**。
                 **即使 MCP 调用超时或报错，也不要"换个办法"去写脚本直连 `http://127.0.0.1:8188` 的 HTTP API。**
@@ -173,7 +190,7 @@
           # 取捆绑 Python / Node 的绝对路径。视觉审查脚本需要 Pillow，
           # PATH 上的 python 不可用时可退回捆绑 Python。
 
-          # ── 知识库：8 个 skill 由本 bundle 自带 ────────────────────────
+          # ── 知识库：9 个 skill 由本 bundle 自带 ────────────────────────
           - id: skill-filesystem
             name: '@deepseek-ai/dsh-skill-filesystem'
             config:
