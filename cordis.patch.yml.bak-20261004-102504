@@ -154,6 +154,8 @@
             name: '@deepseek-ai/dsh-tool-jobs'
           # 取捆绑 Python / Node 的绝对路径。视觉审查脚本需要 Pillow，
           # PATH 上的 python 不可用时可退回捆绑 Python。
+          - id: tool-workspace-dependencies
+            name: '@deepseek-ai/dsh-tool-workspace-dependencies'
 
           # ── 知识库：8 个 skill 由本 bundle 自带 ────────────────────────
           - id: skill-filesystem

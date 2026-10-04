@@ -154,6 +154,8 @@
             name: '@deepseek-ai/dsh-tool-jobs'
           # 取捆绑 Python / Node 的绝对路径。视觉审查脚本需要 Pillow，
           # PATH 上的 python 不可用时可退回捆绑 Python。
+          - id: tool-workspace-dependencies
+            name: '@deepseek-ai/dsh-tool-workspace-dependencies'
 
           # ── 知识库：8 个 skill 由本 bundle 自带 ────────────────────────
           - id: skill-filesystem
@@ -165,7 +167,7 @@
                 # 注意：不要用 bundle 作用域那套 `new URL('package.json', baseUrl)` —— 实测 baseUrl 若是
                 # 裸路径（非 URL），new URL() 会抛 ERR_INVALID_ARG_VALUE；而 createRequire(baseUrl)
                 # 在「目录路径 / 目录 URL / 文件名路径 / 文件名 URL」四种形态下全部通过。
-                - !!js (()=>{const p=process.getBuiltinModule('node:path'),u=process.getBuiltinModule('node:url'),f=process.getBuiltinModule('node:fs'),m=process.getBuiltinModule('node:module');const ok=d=>{try{return f.existsSync(d)&&f.statSync(d).isDirectory()}catch{return false}};let d=String(baseUrl);try{d=u.fileURLToPath(d)}catch{};try{if(!f.statSync(d).isDirectory())d=p.dirname(d)}catch{};const c1=p.join(d,'skills');if(ok(c1))return c1;try{const c2=p.join(p.dirname(m.createRequire(baseUrl).resolve('dsh-comfyui-preset/package.json')),'skills');if(ok(c2))return c2}catch{};return c1})()
+                - !!js "process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-comfyui-preset/package.json')), 'skills')"
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'
 
