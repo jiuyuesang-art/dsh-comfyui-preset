@@ -12,7 +12,7 @@ whenToUse: 用户提到出图/绘图/画图/生成图片/改图/抠图/上色/�
 
 ---
 
-## 0. 六条铁律（违反任何一条都会浪费一整轮）
+## 0. 七条铁律（违反任何一条都会浪费一整轮）
 
 1. **`confirm_spend` 永远不主动传 `true`。** 只有用户明确说"花钱吧/用 API 吧"才传。本预设只做本地免费能力。
 2. **`run_workflow` 一律 `wait: false`**，拿到 `prompt_id` 后用 `job(action="wait")` 轮询。慢任务用 `wait: true` 会被调用超时打断（任务其实没死，但你会以为失败了）。
@@ -25,6 +25,16 @@ whenToUse: 用户提到出图/绘图/画图/生成图片/改图/抠图/上色/�
 6. **产物出来之后、交付之前，必须先加载 `comfyui-review` 真看图审一遍。**
    拿到 `fetch_outputs` 的结果直接甩给用户 = 违规；没读图就说"效果不错" = 违规。
    审查报告要落盘到 `60_review/`，并交人 review —— **采纳权在人，不在你**。
+7. ⛔ **全程只用 MCP 工具操作 ComfyUI，不许绕过它直连 HTTP API。**
+   **即使 MCP 调用超时或报错，也不要"换个办法"去写脚本打 `http://127.0.0.1:8188`。**
+   原因：
+   - MCP 工具做了**参数校验与错误归一化**（如 `validate_workflow`、付费节点拦截），
+     直连 API 等于把这些保护全丢掉；
+   - 直连要自己拼 JSON、处理轮询与超时，**多烧一轮甚至几轮 token**，而这正是本预设要消灭的成本；
+   - MCP 报 `Request timed out` **通常不是失败** —— 任务还在跑，**继续用 `job action="status"` 轮询**即可。
+
+   **唯一例外**：MCP 连接器**确实整体不可用**（工具列表里没有 `mcp__comfymcp__*`）。
+   那种情况**先停下告诉用户**，由用户决定；不要自作主张换方案。
 
 > 📌 与提示词有关的工具参数速记：`create` 类任务（出图/改图/视频）真正决定质量的是那句提示词本身——
 > 结构模板与语言规则在 `comfyui-prompt-craft`，本手册只管**怎么把它送进 ComfyUI**。
@@ -73,8 +83,16 @@ whenToUse: 用户提到出图/绘图/画图/生成图片/改图/抠图/上色/�
 ② mcp__comfymcp__run_workflow        workflow_path=<同上>  wait=false
       → 立刻返回 prompt_id
 
-③ mcp__comfymcp__job                 action="wait"  prompt_id=<上>  timeout_seconds=100
-      超时就再调一次 status，任务不会因为调用超时而中断
+③ mcp__comfymcp__job                 action="wait"  prompt_id=<上>  timeout_seconds=20
+      🔴 **一次只等 20 秒**，然后反复调 action="status" 轮询，直到状态变终态。
+      **不要在一次调用里等很久。**
+
+      ⚠️ **实测过的坑（2026-10-04）**：传 `timeout_seconds=120` 会让 **MCP 传输层先超时**，
+      返回 `Error: Request timed out`。**这个报错不代表任务失败** —— 任务仍在 ComfyUI 里跑，
+      继续用 `status` 轮询就能拿到结果。
+
+      ⛔ **绝不能因为超时就绕过 MCP**：不要写脚本直连 `http://127.0.0.1:8188` 的 HTTP API。
+      那会丢掉 MCP 的参数校验与错误归一化，而且多烧一轮 token。见 §0 铁律 7。
 
 ④ mcp__comfymcp__fetch_outputs       prompt_id=<上>  out_dir=<项目对应环节目录>
       不要传 inline_images
