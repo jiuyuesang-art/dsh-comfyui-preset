@@ -44,18 +44,58 @@
 | **② 文件完整性**（对 MANIFEST.json 的 SHA256） | 你自己改过就是正常现象；改完重跑 `tools/pack-preset.ps1` 刷新清单 |
 | **③ profile 注册状态** | 报 link 悬空 → 重新安装（见 §2） |
 | **④ PowerShell 7 配置** | 报缺失 → 见 §4 |
+| **⑤ 持久化状态** | 🔴 报"快照与 profile 补丁层都不含"→ 见 §1.1，**否则重启后预设会消失** |
 
 ```powershell
 # ② 若 ③ 不过，重新安装
 #    在 DSH 里让 agent 执行：
 #      plugin_manager  action=install_bundle  target=<本目录的绝对路径>
-#    若报 ambiguous-install（已装），改用：
-#      plugin_manager  action=set_bundle  target=dsh-comfyui-preset  enabled=false
-#      plugin_manager  action=set_bundle  target=dsh-comfyui-preset  enabled=true
 
 # ③ 新开一个会话，在预设选择器里选【ComfyUI 创作模式】
 #    现有会话不会变 —— 预设是**按会话**惰性挂载的
 ```
+
+### 1.1 🔴 千万不要用「禁用→启用」来重应用（2026-10-04 实测的坑）
+
+**这是一个真实踩过的坑，代价是预设重启后消失。**
+
+`plugin_manager set_bundle` 的两个方向**行为不对称**（读 `dsh-app-boot` 源码 + 实测确认）：
+
+| 操作 | 对组合快照 `cordis.yml` 的影响 |
+|---|---|
+| `enabled=false`（禁用） | **会把当前树写进快照** —— 此时**没有**本预设的行 |
+| `enabled=true`（启用） | **只热生效，不落盘**（实测：文件 mtime 不变） |
+
+**后果**：任何一次 disable→enable 之后，**运行中一切正常**（`fiberPhase: active`），
+但**落盘的快照永久停在"禁用"状态** —— **一重启，预设就没了**。
+而 DSH 启动时正是从 `cordis.yml` + profile 补丁层建树的。
+
+> 所以「报 ambiguous-install 就改用禁用→启用」是**错的**，已从本文件删掉。
+
+**正确的重应用方式**（二选一）：
+
+1. **改完 bundle 内容后** —— 其实**不需要任何 toggle**。skill 正文/脚本是**每次加载时重读**的，
+   persona 变更才需要重启；重启本身就会重建树。
+2. **若预设真的从选择器里消失了** —— 把 bundle 的 `- insert:` 块原样并入
+   profile 的 `cordis.patch.yml`（见下方命令）。profile 层**每次启动都会应用**，放这里最稳。
+
+```powershell
+# 把 bundle 补丁的 `- insert:` 块（第一个非注释行到文件末）原样追加到 profile 补丁。
+# 两层是同一套 patch 方言，缩进已经正确，**不需要重新缩进**。
+$bp = "<bundle>/cordis.patch.yml"
+$pp = "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml"
+
+Copy-Item $pp "$pp.bak-$(Get-Date -f yyyyMMdd-HHmmss)"          # 先备份
+$bl = Get-Content $bp -Encoding UTF8
+$first = 0; while ($bl[$first] -match '^\s*#' -or $bl[$first].Trim() -eq '') { $first++ }
+if ($bl[$first].Trim() -ne '- insert:') { throw "顶层条目不是 - insert:，先人工检查" }
+Add-Content $pp ("`n" + (($bl[$first..($bl.Count-1)]) -join "`n"))
+```
+
+改完**跑一次 `tools/verify-preset.ps1`**，第 ⑤ 项会告诉你持久化状态对不对。
+
+> ⚠️ **不要两边都放**：若快照与 profile 层同时含 `preset-comfyui`，会重复定义。
+> 第 ⑤ 项会检出这种情况并提示二选一。
 
 ---
 

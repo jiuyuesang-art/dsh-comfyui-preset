@@ -457,8 +457,22 @@ plugin_manager  action=install_bundle   target=<本目录的绝对路径>
 
 **结论：Chat / 模型 / 请求头 / 会话循环 都不依赖预设，本项目这个预设也影响不到它们。** 它的唯一职责是让「对话驱动 ComfyUI」这条路不用思考（人设触发规则 + 操作手册 + 知识库）。
 
-> 🔁 **关于重启**：DSH 热应用 bundle 时，只会把选择写进 `dsh.profile.bundles`（`package.json`），**`cordis.yml` 那份组合快照要等到下次启动才重写**（实测：disable 会写、install/enable 不写，所以快照看起来"落后一个 bundle"——这正是另外 16 个 bundle 都在快照里、而最新的这个不在的原因，属正常现象，不是故障）。
-> 因此：**重启 DSH 后 `cordis.yml` 才会包含本 bundle 的行。** 预设行的**热应用**已经生效（`include:preset-comfyui` 在 live 树里 active），所以不重启直接新开会话也能用；但重启一次能让 `!!js` 表达式与组合快照都落到最干净的状态。
+> 🔴 **关于重启：这里曾有一条判断是错的，代价是预设重启后消失。**（2026-10-04 修正）
+>
+> 我原先写的是「快照落后一个 bundle 属正常现象，不是故障」——**前半句对，结论错**。
+>
+> 实测 + 读 `dsh-app-boot` 源码确认：`set_bundle` 两个方向**行为不对称**——
+> **`enabled=false` 会把当前树写进 `cordis.yml`（此时没有本预设的行），
+> 而 `enabled=true` 只热生效、不落盘**（实测 mtime 不变）。
+>
+> **后果**：任何一次 disable→enable 之后，运行中一切正常（`fiberPhase: active`），
+> 但落盘快照**永久停在"禁用"状态** —— **一重启预设就没了**。
+> 而 DSH 启动时正是从 `cordis.yml` + profile 补丁层建树。
+> 这也解释了为什么另外 16 个 bundle 都在快照里、只有本预设不在：**它们从没被 toggle 过**。
+>
+> **正确做法**：不要把「禁用→启用」当重应用手段（INSTALL.md 已删掉这条）。
+> 若预设从选择器消失，把 bundle 的 `- insert:` 块并入 profile 的 `cordis.patch.yml`
+> —— profile 层**每次启动都会应用**。`tools/verify-preset.ps1` 的第 ⑤ 项会自动检出这个问题。
 
 ---
 

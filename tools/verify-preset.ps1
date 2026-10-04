@@ -171,6 +171,39 @@ else {
     else { BAD "找不到 pwsh.exe —— 需安装 PowerShell 7" }
 }
 
+# ── 5) 持久化状态（这个坑很隐蔽：运行中正常，重启后丢失）────────────────────
+""
+"════ 5) 持久化状态（重启后还在吗）════"
+# 背景：`cordis.yml` 是组合快照，启动时从它建树。
+# **`set_bundle enabled=false` 会把树写进快照（那时没有我们的行），
+#   而 `enabled=true` 只热生效、不落盘。** 于是 disable→enable 之后，
+# 运行中一切正常，**一重启预设就消失**。
+$cordisYml = Join-Path $ProfileDir 'cordis.yml'
+$profilePatch = Join-Path $ProfileDir 'cordis.patch.yml'
+
+$inSnapshot = $false
+$inProfileLayer = $false
+if (Test-Path $cordisYml) {
+    $snap = Get-Content $cordisYml -Raw -Encoding UTF8
+    $inSnapshot = ([regex]::Matches($snap, 'preset-comfyui')).Count -gt 0
+}
+if (Test-Path $profilePatch) {
+    $lay = Get-Content $profilePatch -Raw -Encoding UTF8
+    $inProfileLayer = ([regex]::Matches($lay, 'preset-comfyui')).Count -gt 0
+}
+
+if ($inSnapshot -and $inProfileLayer) {
+    WARN "快照与 profile 补丁层**都**含 preset-comfyui —— 可能重复定义。建议二选一（删掉 profile 补丁里那段 insert）"
+} elseif ($inProfileLayer) {
+    OK "profile 补丁层含 preset-comfyui（**每次启动都会应用，重启后仍在**）"
+} elseif ($inSnapshot) {
+    OK "组合快照含 preset-comfyui（重启后仍在）"
+} else {
+    BAD "快照与 profile 补丁层**都不含** preset-comfyui —— 重启后预设会消失！"
+    "     → 处置：把 bundle 的 `- insert:` 块原样并入 profile 的 cordis.patch.yml（见 INSTALL.md §1）"
+    "     ⚠️ **不要**用「禁用→启用」来重应用 —— 那正是造成这个状态的操作"
+}
+
 # ── 结论 ────────────────────────────────────────────────────────────────────
 ""
 if ($fail -eq 0) {
