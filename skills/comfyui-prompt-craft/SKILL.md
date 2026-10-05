@@ -139,6 +139,64 @@ scar under the left eye, huge triumphant grin, blue shorts, standing on the deck
 
 ---
 
+## 1.6 🛡 防止质量下降：**官方做法是把禁令写进正面提示词**
+
+> ⚠️ **这一节纠正一个常见误解**：第一反应往往是"加负面提示词防降质"。
+> 但**对这两个模型，负面提示词不是正确手段** —— 以下是查官方模板原文得到的结论。
+
+### 官方模板实际怎么做的（实测原文）
+
+**Qwen Image 2.1 的官方 T2I 模板**把禁令**追加在正面提示词末尾**：
+
+```
+…emphasizing sharp silhouettes, paper cut-out edges, dynamic compositional balance,
+and clean graphic novel textures.
+Absolutely no text, no typography, no letters, no words, no numbers,
+no logos, no watermark, no captions, pure imagery only.
+```
+
+而同一模板里是 **`"negative_prompt": ""`（空串）**、**`"cfg": 1`**。
+
+**MiniMax H3 的官方模板**：`negative` 与 `no words` 出现次数 **均为 0** —— **它根本没有负向通道**。
+
+### 两个模型的负向能力对照
+
+| | 有 `negative_prompt` 字段吗 | 能生效吗 |
+|---|---|---|
+| **Qwen Image 2.1** | ✅ 有（`TextEncodeQwenImage2.1` 节点带此输入） | ⚠️ **`cfg=1` 时完全无效**。官方模板注释原话：<br>`negative_prompt: unused while cfg is 1`<br>`cfg: keep 1 for the official path. Raise it only if you use a negative prompt.` |
+| **MiniMax H3** | ❌ 没有 | ❌ 走 `BasicGuider`（单一条件输入，无负向分支）。<br>**而且写"不要 X"会把那段措辞加进模型读到的描述里** |
+
+### 所以正确姿势
+
+**① 把禁令写成正面提示词里的一句话**（学官方模板）：
+
+```
+Absolutely no text, no typography, no letters, no words, no numbers,
+no logos, no watermark, no captions, pure imagery only.
+```
+
+- **要出无文字 / 无水印的图，直接整段照抄这句**（官方原句）
+- 要防别的（多余肢体、畸形手、重复元素）→ **同样写成正面句**：
+  `a single character with two arms and five fingers per hand, clean anatomy`
+  —— **说"要什么"，不说"不要什么"**
+
+**② 只有在你**明确愿意提高 `cfg`** 时，Qwen 2.1 的 `negative_prompt` 才是个可选项**
+
+| 项 | 官方路径 | 要用负向词 |
+|---|---|---|
+| `cfg` | **1**（默认，官方发布路径） | **提到 2 以上** |
+| `negative_prompt` | 空 | 填内容 |
+| 代价 | —— | **偏离官方路径**，风格与稳定性会变，且**要重调步数与其它参数** |
+
+> 🔴 **不要把"提高 cfg + 写负向词"当默认做法。** 官方模板明确说 cfg=1 才是发布路径。
+> 只在"正面禁令试过、仍有明确残留"时，才把它当**第二个杠杆**，
+> 并**先告诉用户这是一次偏离官方路径的尝试**。
+
+**③ H3 一律不要写负向词** —— 没有通道，且有害。想说"不要有旁白"，
+要**改成正面描述该镜头里实际存在什么声音**（见 `minimax-h3-docs` 音频章节）。
+
+---
+
 ## 2. Qwen Image 2.1 —— 图像提示词
 
 ### 2.0 语言
