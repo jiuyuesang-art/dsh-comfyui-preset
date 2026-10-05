@@ -83,7 +83,22 @@ if ($Shot -and -not $Sequence) {
     throw "给 -Shot 时必须同时给 -Sequence。"
 }
 
-if (-not $Root) { $Root = Join-Path (Get-Location).Path 'projects' }
+if (-not $Root) {
+    # 探测工作根：当前目录或向上 8 层里含 00_assets / 01_projects / 02_env 的那层。
+    # 找不到就把当前目录当工作根（首次使用时会在它下面新建三个根）。
+    $probe = (Get-Location).Path
+    $found = $null
+    for ($i = 0; $i -lt 8; $i++) {
+        foreach ($m in @('00_assets', '01_projects', '02_env')) {
+            if (Test-Path -LiteralPath (Join-Path $probe $m)) { $found = $probe; break }
+        }
+        if ($found) { break }
+        $p = Split-Path $probe -Parent
+        if (-not $p -or $p -eq $probe) { break }
+        $probe = $p
+    }
+    $Root = Join-Path ($(if ($found) { $found } else { (Get-Location).Path })) '01_projects'
+}
 $projRoot = Join-Path $Root $Project
 $created  = [System.Collections.Generic.List[string]]::new()
 
@@ -94,28 +109,21 @@ function EnsureDir([string]$p) {
     }
 }
 
-# ── 0) 三个根（总资产 / 项目 / 环境）────────────────────────────────────────
-# 结构见 SKILL.md §1.0：工作根下只有这三个主体文件夹。
+# ── 0) 按需生长：**不预建任何空目录** ───────────────────────────────────────
+# 🔴 本项目的文件结构是**固定的**（三根 / 类型 / 环节，名字都不变），
+#    但**什么时候建**是按需的：**没有东西要放，就不建。**
+#    · 这次任务没有音频 → 不建 50_audio/
+#    · 这次不用 3D   → 不建 04_3d/
+#    · 还没做审查     → 不建 60_review/
+#    要建某个目录时用 ensure.ps1（幂等，已存在会直接返回）：
+#      ensure.ps1 -Dir  01_projects/<p>/20_shots/ep01/sq010/sh0010/30_key
+#      ensure.ps1 -Asset characters -Name kirito -Sub ref
 $workRoot = Split-Path (Split-Path $projRoot -Parent) -Parent   # 工作根
 if (-not $Episode) { $Episode = 'ep01' }
-foreach ($d in @(
-    '00_assets/01_characters', '00_assets/02_scenes', '00_assets/03_props',
-    '00_assets/04_3d', '00_assets/05_audio', '00_assets/06_text',
-    '00_assets/07_styles', '00_assets/08_fx', '00_assets/09_misc',
-    '02_env/workflows/image', '02_env/workflows/video', '02_env/workflows/edit',
-    '02_env/models', '02_env/tools'
-)) { EnsureDir (Join-Path $workRoot $d) }
 
-# ── 1) 项目骨架 ────────────────────────────────────────────────────────────
-EnsureDir $projRoot
-foreach ($d in @(
-    '00_dev/reference', '00_dev/style',
-    '10_pre/script', '10_pre/storyboard', '10_pre/previz',
-    '20_shots',
-    '30_editorial/audio', '30_editorial/edit', '30_editorial/export',
-    '30_editorial/edl', '30_editorial/current', '30_editorial/deliver',
-    '90_deliver'
-)) { EnsureDir (Join-Path $projRoot $d) }
+# 只建到"项目"这一层 —— 其余全部按需
+EnsureDir (Split-Path $projRoot -Parent) | Out-Null   # 01_projects/
+EnsureDir $projRoot | Out-Null
 
 $metaPath = Join-Path $projRoot 'project.json'
 if (-not (Test-Path -LiteralPath $metaPath)) {
@@ -123,6 +131,7 @@ if (-not (Test-Path -LiteralPath $metaPath)) {
         slug          = $Project
         title         = if ($Title) { $Title } else { $Project }
         created       = (Get-Date -Format 'yyyy-MM-dd')
+        episode       = $Episode
         fps           = 24
         baseWidth     = 1024
         baseHeight    = 1024
@@ -132,25 +141,27 @@ if (-not (Test-Path -LiteralPath $metaPath)) {
             image = 'qwen_image_2.1_Q6_K.gguf'
             video = 'MiniMax-H3-Ref2VA-Pruned-Q4_K_M.gguf'
         }
-        naming        = '<seq>_<shot>-<element>-v<NNN>[-<frame>].<ext>'
-        note          = '命名全小写、无空格；层级用 _ 分隔，字段用 - 分隔；版本 3 位零填充。更新同名文件前先跑 scripts/safe-write.ps1 归档到同目录 old/。'
+        shotCode      = '<ep>_<sq>_<sh>'
+        naming        = '<shotCode>-<element>-v<NNN>[-<frame>].<ext>'
+        lazyDirs      = $true
+        note          = '目录按需生长：没有东西要放就不建（用 scripts/ensure.ps1 建）。命名全小写、无空格；层级用 _ 分隔，字段用 - 分隔；版本 3 位零填充。更新同名产物前先跑 scripts/safe-write.ps1 归档到同目录 old/。'
     }
     $meta | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $metaPath -Encoding utf8
     Say "📄 已写 project.json → $metaPath"
 }
 
-# ── 2) 序列 ────────────────────────────────────────────────────────────────
+# ── 1) 可选：按需建序列 / 镜头（只建点名的那些，不铺全套）──────────────────
 if ($Sequence) {
-    EnsureDir (Join-Path $projRoot "10_pre/storyboard/$Sequence")
-    EnsureDir (Join-Path $projRoot "20_shots/$Episode/$Sequence")
+    # 分镜图目录 —— 只有真的要放分镜图时才需要，所以只在点名序列时建
+    EnsureDir (Join-Path $projRoot "10_pre/storyboard/$Sequence") | Out-Null
+    EnsureDir (Join-Path $projRoot "20_shots/$Episode/$Sequence") | Out-Null
 }
 
-# ── 3) 镜头 ────────────────────────────────────────────────────────────────
 if ($Shot) {
+    # 只建镜头这一层。下面的环节目录（10_ref / 30_key / …）等**真正要放东西时**
+    # 由 ensure.ps1 按需创建 —— 见上方 §0 说明。
     $shotRoot = Join-Path $projRoot "20_shots/$Episode/$Sequence/$Shot"
-    foreach ($d in @('old', '10_ref', '20_layout', '30_key', '40_video', '50_audio', '60_review')) {
-        EnsureDir (Join-Path $shotRoot $d)
-    }
+    EnsureDir $shotRoot | Out-Null
     $cli = Join-Path $shotRoot 'shot.json'
     if (-not (Test-Path -LiteralPath $cli)) {
         [ordered]@{
