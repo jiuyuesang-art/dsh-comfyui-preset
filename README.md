@@ -193,16 +193,35 @@ DSH 会读文件、改文件、跑验证 —— **和它改任何代码项目没
 | [CGWire — A proposal for your file hierarchy](https://blog.cg-wire.com/cg-pipeline-a-proposal-for-your-file-hierarchy/) | 管线目录提案（Kitsu 团队） |
 | [La Cuisine (Les Fées Spéciales) — Organizing project files](https://lacuisine.tech/an-introduction-to-organizing-project-files) | `current/` 技巧 |
 
-### 官方文档来源
+### 官方说明书来源
 
-| 来源 | 快照在哪 |
+本项目**引用并整理了下列官方说明书**，做成离线快照供 Agent 按需查阅：
+
+| 官方说明书 | 快照位置 |
 |---|---|
-| [ComfyUI Docs](https://docs.comfy.org) | `skills/comfyui-docs/` |
-| Qwen Image 2.1（ComfyUI 官方教程） | `skills/qwen-image-2-1-docs/` |
-| MiniMax H3（ComfyUI 官方教程） | `skills/minimax-h3-docs/` |
+| **[ComfyUI 官方文档](https://docs.comfy.org)** | `skills/comfyui-docs/` |
+| **[Qwen Image 2.1 官方说明](https://docs.comfy.org/tutorials/image/qwen/qwen-image-2-1)**（ComfyUI 官方教程） | `skills/qwen-image-2-1-docs/` |
+| **[MiniMax H3 官方说明](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)**（ComfyUI 官方教程） | `skills/minimax-h3-docs/` |
 
-> 文档快照是**整理与索引**，不是原文转载。每篇 `references/` 顶部都标注了原始 URL 与抓取时间。
-> 若与官方最新版本冲突，**以官方为准**。
+> ⚠️ **这些是「整理与索引」，不是原文转载。**
+> 每篇 `references/` 顶部都标注了**原始 URL 与抓取时间**，可自行回源核对。
+> **官方文档更新后，请以官方为准** —— 快照可能滞后。
+>
+> 本 preset 只做**参数提取、结构整理与要点索引**，用于让 Agent 不必每次联网查文档。
+> 官方说明书的**著作权归各自所有者**。
+
+### 创作来源
+
+> **这个 preset 本身，就是在 DSH 的「创造模式」下、用 DeepSeek V4.1 模型对话写出来的。**
+
+具体来说：
+
+- 用 **DSH 内置的「创造模式」**（`preset-cordis`）作为工作环境 —— 它提供写插件、改配置、验证效果的完整能力
+- 用 **DeepSeek V4.1** 模型作为对话方，逐步产出 `cordis.patch.yml`、9 个 skill、工具脚本与文档
+- 换句话说：**它是「用 DSH 造 DSH 扩展」的产物** —— 一边造一边用，规则与手册都经过实际使用的打磨
+
+这也意味着：**如果你觉得这套结构好用，你完全可以照同样方式造自己的 preset。**
+具体怎么改见本文 §3「目的与改造」——尤其是「**让 DSH 自己帮你改**」那一节。
 
 ### 依赖的 DSH 内部模块
 
@@ -214,15 +233,20 @@ DSH 会读文件、改文件、跑验证 —— **和它改任何代码项目没
 
 ### 开源说明
 
-**许可证：MIT** —— 见 `package.json`。
+**许可证：MIT** —— 见 [`package.json`](package.json)。可自由使用、修改、再分发。
 
 **免责声明**：
-- 本项目**与 DeepSeek、ComfyUI、Qwen、MiniMax 均无隶属关系**，是第三方社区作品
-- 引用的官方文档内容版权归各自所有者；本项目只做**整理与索引**
-- 参考图与素材的使用请自行确认版权 —— **免费 ≠ 可商用**（`art-reference` 手册里有红线说明）
-- 使用本 preset 生成的内容，其合规性与版权责任由使用者承担
 
-**贡献**：欢迎提 Issue / PR。改 `skills/` 与 `cordis.patch.yml` 前请先读 `INSTALL.md`。
+- 本项目是**第三方社区作品**，与 **DeepSeek、ComfyUI、Qwen（阿里）、MiniMax 均无隶属关系**，
+  也**未获得任何一方的官方背书**
+- 引用的**官方说明书**（ComfyUI / Qwen Image 2.1 / MiniMax H3）**著作权归各自所有者**；
+  本项目只做**整理与索引**，并在每篇顶部标注原始 URL
+- 项目结构规范引用的第三方资料（Blender Studio / Netflix / CGWire / La Cuisine）
+  各自适用其原有许可
+- 参考图与素材的使用请自行确认版权 —— **免费 ≠ 可商用**（`art-reference` 手册里有红线说明）
+- **使用本 preset 生成的内容**，其合规性与版权责任由使用者承担
+
+**贡献**：欢迎提 Issue / PR。改 `skills/` 与 `cordis.patch.yml` 前请先读 [`INSTALL.md`](INSTALL.md)。
 
 ---
 
