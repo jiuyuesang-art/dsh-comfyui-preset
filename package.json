@@ -1,6 +1,6 @@
 {
   "name": "dsh-comfyui-preset",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "private": true,
   "description": "ComfyUI 创作模式预设 for DeepSeek Harness：常驻创作操作准则 + ComfyUI MCP 快速调用决策表 + 视觉质检 + 动画项目文件管理 + 艺术参考检索 + ComfyUI / Qwen Image 2.1 / MiniMax H3 官方文档离线知识库。",
   "type": "module",
