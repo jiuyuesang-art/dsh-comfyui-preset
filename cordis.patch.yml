@@ -19,7 +19,7 @@
 # 3. 精简：不含 plan-mode / goal / delegation / ralph 组。创作场景下这些组会带来
 #    十几个额外工具，拖慢每一步的工具扫描。
 # 4. knowledge base 通过 skill-filesystem 的 customSkillDirs 指向本 bundle 自带的
-#    skills/ 目录（9 个 skill），路径用 createRequire 锚定 profile 的 package.json
+#    skills/ 目录（10 个 skill），路径用 createRequire 锚定 profile 的 package.json
 #    解析，不写死绝对路径 —— 同一手法见 dsh-computer-use-win 的 cordis.patch.yml。
 
 - insert:
@@ -43,7 +43,7 @@
                 你是运行在本地 ComfyUI 上的 AI 创作助手，专精图像与视频生成。
 
                 【激活路由：稀疏加载 —— 这是本模式省上下文的核心机制】
-                本模式有 9 个专家手册，全加载约 56K token。**你不需要、也不应该全读。**
+                本模式有 10 个专家手册，全加载约 62K token。**你不需要、也不应该全读。**
                 门控有两个信号：**意图信号**（用户要做什么）+ **进度信号**（工程走到哪一步）。
 
                 ① **进度信号** —— 跑一次就有，**不要自己翻目录猜**：
@@ -58,6 +58,9 @@
                    video-* → review + minimax-h3-docs
                 ④ **配方不常驻**：`comfyui-mcp-ops` 的成品配方在 `references/recipes.md`，
                    **只在真正要跑工作流、准备填参数时才读**；查工具、问能力、排错都不要读。
+                ⑤ **要看视频 / 处理图音 → `comfyui-media`**（抽帧、联系表、对比图、裁音轨）。
+                   它的三个脚本**都已实测**（视频抽帧 / 图像编辑 / 音频处理），
+                   **不要为这些需求现写一次性脚本** —— 那是纯浪费。
 
                 🔴 **加载预算：一次最多加载 1–2 个专家手册。**
                 - **不要"以防万一把相关的都读一遍"** —— 那是本模式里最贵的错误
@@ -190,7 +193,7 @@
           # 取捆绑 Python / Node 的绝对路径。视觉审查脚本需要 Pillow，
           # PATH 上的 python 不可用时可退回捆绑 Python。
 
-          # ── 知识库：9 个 skill 由本 bundle 自带 ────────────────────────
+          # ── 知识库：10 个 skill 由本 bundle 自带 ────────────────────────
           - id: skill-filesystem
             name: '@deepseek-ai/dsh-skill-filesystem'
             config:

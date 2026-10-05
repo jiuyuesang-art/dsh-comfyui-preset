@@ -83,16 +83,47 @@ whenToUse: 用户提到 跑图 / 工作流 / 调用 MCP / 有哪些模型 / 工�
 ② mcp__comfymcp__run_workflow        workflow_path=<同上>  wait=false
       → 立刻返回 prompt_id
 
-③ mcp__comfymcp__job                 action="wait"  prompt_id=<上>  timeout_seconds=20
-      🔴 **一次只等 20 秒**，然后反复调 action="status" 轮询，直到状态变终态。
-      **不要在一次调用里等很久。**
+③ 等待 —— 🔴 **这是最容易烧 token 的一步，按任务类型分开处理**
 
-      ⚠️ **实测过的坑（2026-10-04）**：传 `timeout_seconds=120` 会让 **MCP 传输层先超时**，
-      返回 `Error: Request timed out`。**这个报错不代表任务失败** —— 任务仍在 ComfyUI 里跑，
-      继续用 `status` 轮询就能拿到结果。
+**先看本机实测耗时**（从 ComfyUI 历史里取的 10 条真实任务）：
 
-      ⛔ **绝不能因为超时就绕过 MCP**：不要写脚本直连 `http://127.0.0.1:8188` 的 HTTP API。
-      那会丢掉 MCP 的参数校验与错误归一化，而且多烧一轮 token。见 §0 铁律 7。
+| 任务 | 实测耗时 | 该怎么等 |
+|---|---|---|
+| **出图** | **17–111 秒**（多数 < 2 分钟） | 一次 `action="wait"` 就够 |
+| **视频** | **363–3469 秒**（**最长 58 分钟**） | 一次 `wait` 根本不够，见下 |
+
+**出图（< 2 分钟）**：
+
+```
+mcp__comfymcp__job   action="wait"   prompt_id=<上>   timeout_seconds=90
+```
+
+**视频（可能几十分钟）**：
+
+```
+mcp__comfymcp__job   action="watch"  prompt_id=<上>   timeout_seconds=600
+```
+
+> `watch` 的**默认就是 600 秒**（`wait` 默认只有 25 秒）—— **长任务一律用它**。
+
+### 🔴 四条等待纪律（违反任何一条都在白烧 token）
+
+**① 一次调用超时 ≠ 失败。** 任务还在 ComfyUI 里跑。
+报 `Request timed out` 只是**这次调用**没等到，**不是任务挂了**。
+
+**② 不要连续空转轮询。** 同一个 `prompt_id` 连续 `status` **超过 2 次**就是浪费 ——
+每次调用都要一次完整往返 + 上下文开销，而任务耗时**不会因为你多问而变短**。
+
+**③ 超时之后先去做别的有用的事**，再回来看：
+- 写上一张的 `.meta.json` 侧车
+- 准备下一个镜头的提示词与参考图
+- 更新审查报告 / 项目状态
+- 整理 `old/` 归档
+
+**④ 视频任务提交后，明确告诉用户"在跑，预计 X 分钟"**，然后就去做别的。
+本机实测最长 **58 分钟** —— 坐在那里轮询是纯浪费。
+
+> ⚠️ **别因为超时就绕过 MCP 去直连 HTTP API**（见 §0 铁律 7）。超时是正常的，不是故障。
 
 ④ mcp__comfymcp__fetch_outputs       prompt_id=<上>  out_dir=<项目对应环节目录>
       不要传 inline_images
