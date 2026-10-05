@@ -1,6 +1,6 @@
 ---
 name: qwen-image-2-1-docs
-description: Qwen Image 2.1（Qwen-Image-2.1）官方文档离线快照。当用户要求用 Qwen Image 2.1 / Qwen-Image 出图、做图像编辑/换装/抠图/生成透明底 PNG、写 Qwen 提示词，或需要该模型的参数量、推荐步数与 CFG、显存占用、ComfyUI 模板与模型文件放置位置时使用。
+description: Qwen Image 2.1 图像模型官方文档快照。写出图/改图提示词、调参、排错时加载。含参数（cfg/steps/宽高）、提示词指南、编辑与多图参考、已知限制。
 ---
 
 # Qwen Image 2.1 离线文档快照

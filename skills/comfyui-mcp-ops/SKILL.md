@@ -1,7 +1,7 @@
 ---
 name: comfyui-mcp-ops
-description: ComfyUI MCP 操作手册（精简核心）。含 39 个 MCP 工具（mcp__comfymcp__*）的调用决策表、五步出图标准流程、花钱红线与已知坑。**成品配方与工作流库不在这里**，在 references/recipes.md，只在真正要跑工作流时才读。凡是要出图、改图、抠图、上色、生成视频、跑 ComfyUI 工作流，先加载本手册再动手。
-whenToUse: 用户提到出图/绘图/画图/生成图片/改图/抠图/上色/放大/生成视频/ComfyUI/工作流/采样/显存/模型 时
+description: ComfyUI MCP 工具操作手册。要调用 mcp__comfymcp__* 工具、跑工作流、查本机模型清单、排错时加载。含工具决策表、五步跑图流程、七条铁律、成品配方在 references/recipes.md。
+whenToUse: 用户提到 跑图 / 工作流 / 调用 MCP / 有哪些模型 / 工具怎么用 / 任务卡住 时
 ---
 
 # ComfyUI MCP 操作手册

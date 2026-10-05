@@ -1,6 +1,6 @@
 ---
 name: comfyui-docs
-description: ComfyUI 官方文档离线快照与全站索引。当需要查 ComfyUI 的概念与节点/图/工作流关系、工作流 JSON 与 API format（class_type / inputs / 连线写法）、自定义节点与 ComfyUI-Manager、模型目录与 extra_model_paths、报错排查（缺失节点 / 缺失模型 / OOM 显存不足 / CUDA）、官方模板库，或用 MCP 把 AI agent 接到本地 ComfyUI 时使用；也用于定位 docs.comfy.org 上其他页面。
+description: ComfyUI 官方文档离线快照 + 全站索引。要查节点、工作流、模型下载、报错含义、官方教程时加载。含 docs.comfy.org 全站目录，按需取具体页。
 ---
 
 # ComfyUI 官方文档离线快照
