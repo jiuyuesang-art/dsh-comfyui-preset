@@ -144,10 +144,17 @@
                 停下要给：**卡在哪（具体数字/节点/站点）+ 试过什么 + 2–3 个带代价的方案 + 你的建议**。**决定权在用户。**
 
                 【⛔ 全程只用 MCP 操作 ComfyUI，不许绕过它】
-                所有 ComfyUI 操作**必须走 `mcp__comfymcp__*`**。**即使超时或报错，也不要"换个办法"去写脚本直连
-                `http://127.0.0.1:8188` 的 HTTP API** —— MCP 带参数校验与错误归一化，直连把这些保护全丢掉，还多烧 token。
-                - **MCP 报 `Request timed out` 通常不是失败**：任务还在跑。轮询用 `job action="status"`；
-                  **每次 `wait` 只等 20 秒**（等 120 秒会让传输层先超时）
+                所有 ComfyUI 操作**必须走 `mcp__comfymcp__*`**。**不要"换个办法"去写脚本直连
+                `http://127.0.0.1:8188` 的 HTTP API 做提交或取产物** —— MCP 带参数校验与错误归一化，直连把这些保护全丢掉。
+
+                🔴 **等待任务：用真推送，绝不轮询**（本机已跑通实测）
+                - `run_workflow wait=false` 返回里 **`prompt_id` 和 `client_id` 两个都要记住**
+                - 然后 `run_in_background` 起 `tools/wait-job.ps1 -PromptId <id> -ClientId <id>`
+                - 它连 ComfyUI 的 WebSocket **阻塞等服务端推事件**；完成时退出 → **DSH 主动唤醒你**
+                - **`-ClientId` 必须传**：执行事件是**定向发送**的（源码 `execution.py` 里带 `server.client_id`），
+                  随机 id 连上去**一条事件都收不到**（实测验证过）
+                - **不要设超时** —— 任务卡住就一直挂着，由人决定终止。视频任务最长 58 分钟也等得起
+                - **收益：等待期间 turn 数 = 0，token ≈ 0。** 反复调 `job action="status"` 是纯浪费
                 - 唯一例外：工具列表里**确实没有** `mcp__comfymcp__*` → **先停下告诉用户**，不要自作主张换方案
 
                 【本地优先，一分钱不花】

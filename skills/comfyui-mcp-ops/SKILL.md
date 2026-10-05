@@ -83,47 +83,71 @@ whenToUse: 用户提到 跑图 / 工作流 / 调用 MCP / 有哪些模型 / 工�
 ② mcp__comfymcp__run_workflow        workflow_path=<同上>  wait=false
       → 立刻返回 prompt_id
 
-③ 等待 —— 🔴 **这是最容易烧 token 的一步，按任务类型分开处理**
+③ 等待 —— 🔴 **用真推送，不要轮询**（本机已跑通并实测）
 
-**先看本机实测耗时**（从 ComfyUI 历史里取的 10 条真实任务）：
+**本机实测耗时**（ComfyUI 历史里的真实任务）：
 
-| 任务 | 实测耗时 | 该怎么等 |
-|---|---|---|
-| **出图** | **17–111 秒**（多数 < 2 分钟） | 一次 `action="wait"` 就够 |
-| **视频** | **363–3469 秒**（**最长 58 分钟**） | 一次 `wait` 根本不够，见下 |
+| 任务 | 实测耗时 |
+|---|---|
+| **出图** | **17–140 秒** |
+| **视频** | **363–3469 秒**（**最长 58 分钟**） |
 
-**出图（< 2 分钟）**：
-
-```
-mcp__comfymcp__job   action="wait"   prompt_id=<上>   timeout_seconds=90
-```
-
-**视频（可能几十分钟）**：
+### 正确做法：让 ComfyUI **主动推**给 DSH
 
 ```
-mcp__comfymcp__job   action="watch"  prompt_id=<上>   timeout_seconds=600
+① mcp__comfymcp__run_workflow  workflow_path=<…>  wait=false
+   → 返回里有 **prompt_id** 和 **client_id** —— 🔴 **两个都要记住**
+
+② 用 run_in_background 起等待器（**不要设超时**）：
+   & "<bundle>/tools/wait-job.ps1" -PromptId <上> -ClientId <上>
+
+③ 等待器连 ComfyUI 的 WebSocket，**阻塞等服务端推事件** —— 全程零轮询
+
+④ 完成时等待器退出 → **DSH 主动通知你**（这是推送，不是你去问）
+
+⑤ 你被唤醒后继续：fetch_outputs（MCP）→ 审查 → 落盘
 ```
 
-> `watch` 的**默认就是 600 秒**（`wait` 默认只有 25 秒）—— **长任务一律用它**。
+**实测输出长这样**（服务端推来的实时进度）：
 
-### 🔴 四条等待纪律（违反任何一条都在白烧 token）
+```
+⏳ 等待作业 2c374e24-…（事件驱动，超时 300s）
+   … 10/25
+   … 20/25
+✅ 作业完成（耗时 139.5s，产出 1 个节点）
+   → 下一步：mcp__comfymcp__fetch_outputs  prompt_id=2c374e24-…
+```
 
-**① 一次调用超时 ≠ 失败。** 任务还在 ComfyUI 里跑。
-报 `Request timed out` 只是**这次调用**没等到，**不是任务挂了**。
+### 🔴 `-ClientId` **必须传** —— 这是整个机制的关键
 
-**② 不要连续空转轮询。** 同一个 `prompt_id` 连续 `status` **超过 2 次**就是浪费 ——
-每次调用都要一次完整往返 + 上下文开销，而任务耗时**不会因为你多问而变短**。
+查过 ComfyUI 源码（`execution.py`）：
 
-**③ 超时之后先去做别的有用的事**，再回来看：
-- 写上一张的 `.meta.json` 侧车
-- 准备下一个镜头的提示词与参考图
-- 更新审查报告 / 项目状态
-- 整理 `old/` 归档
+```python
+server.send_sync("executing",  {...}, server.client_id)   # ← 定向发送
+server.send_sync("executed",   {...}, server.client_id)   # ← 定向发送
+server.send_sync("progress",   {...}, server.client_id)   # ← 定向发送
+```
 
-**④ 视频任务提交后，明确告诉用户"在跑，预计 X 分钟"**，然后就去做别的。
-本机实测最长 **58 分钟** —— 坐在那里轮询是纯浪费。
+**执行事件只发给「提交时用的那个 `client_id`」**（`server.py` 的 `send_json`：
+`sid is None` 才广播，否则只发给那一个 socket）。
 
-> ⚠️ **别因为超时就绕过 MCP 去直连 HTTP API**（见 §0 铁律 7）。超时是正常的，不是故障。
+> ⚠️ **用随机 client_id 连上去，一条执行事件都收不到** —— 这是实测踩出来的：
+> 我先用随机 id 试，任务明明成功了，监听却 0 事件；换成提交时的 client_id 立刻就通了。
+
+### 关于超时与卡住
+
+**默认不设超时**（`-TimeoutSeconds 0`）—— 任务卡住就一直挂着，**由人决定要不要终止**。
+不重试、不放弃、不自作主张。**视频任务（最长 58 分钟）也等得起。**
+
+### 收益
+
+等待期间 **模型 turn 数 = 0，token 消耗 ≈ 0**。
+以前那种"反复调 `job action=status`"的做法，每一次都要一次完整往返 + 上下文开销，
+而任务耗时**不会因为你多问而变短**。
+
+> ⚠️ **别因为等待就绕过 MCP 去直连 HTTP API**（见 §0 铁律 7）。
+> 等待器只**监听事件流**判断"跑完没有"，它不做任何"干活"的事 ——
+> 提交 / 校验 / 取产物**一律走 MCP**。这不是绕过，是通知通道。
 
 ④ mcp__comfymcp__fetch_outputs       prompt_id=<上>  out_dir=<项目对应环节目录>
       不要传 inline_images
