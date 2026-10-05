@@ -61,10 +61,20 @@ def _font(size: int):
 
 
 def _fmt(s: str):
-    """--box / --bg 这类 'a,b,c,d' 参数解析。"""
+    """--box / --rect 这类 'a,b,c,d' 参数解析（必须 4 个）。"""
     parts = [int(x.strip()) for x in s.split(",")]
     if len(parts) != 4:
-        raise argparse.ArgumentTypeError(f"需要 4 个逗号分隔的数字，收到 {len(parts)} 个")
+        raise argparse.ArgumentTypeError(f"需要 4 个逗号分隔的数字（左,上,右,下），收到 {len(parts)} 个")
+    return tuple(parts)
+
+
+def _rgb(s: str):
+    """--bg 底色：接受 r,g,b（3 个）或 r,g,b,a（4 个）。"""
+    parts = [int(x.strip()) for x in s.split(",")]
+    if len(parts) not in (3, 4):
+        raise argparse.ArgumentTypeError(f"需要 3（r,g,b）或 4（r,g,b,a）个数字，收到 {len(parts)} 个")
+    if any(not (0 <= v <= 255) for v in parts):
+        raise argparse.ArgumentTypeError(f"颜色分量必须在 0–255，收到 {s}")
     return tuple(parts)
 
 
@@ -250,7 +260,7 @@ def main():
     p.add_argument("--width", type=int, default=0)
     p.add_argument("--height", type=int, default=0)
     p.add_argument("--fit", choices=["cover", "contain", "stretch"], default="contain")
-    p.add_argument("--bg", type=_fmt, default=(0, 0, 0), help="contain 时的底色 r,g,b")
+    p.add_argument("--bg", type=_rgb, default=(0, 0, 0), help="contain 时的底色 r,g,b")
     p.set_defaults(func=cmd_resize)
 
     p = sub.add_parser("crop", help="裁切")
@@ -263,7 +273,7 @@ def main():
     p.add_argument("image")
     common(p)
     p.add_argument("--aspect", required=True, help="如 16:9 / 1:1 / 9:16")
-    p.add_argument("--bg", type=_fmt, default=(0, 0, 0))
+    p.add_argument("--bg", type=_rgb, default=(0, 0, 0))
     p.set_defaults(func=cmd_pad)
 
     p = sub.add_parser("convert", help="批量转格式")

@@ -57,6 +57,15 @@ param(
     [Parameter(ParameterSetName = 'Asset')]
     [string[]]$Sub,
 
+    [Parameter(ParameterSetName = 'Asset')]
+    [string]$NameZh,
+
+    [Parameter(ParameterSetName = 'Asset')]
+    [string]$Source,
+
+    [Parameter(ParameterSetName = 'Asset')]
+    [string[]]$Tags,
+
     [Parameter(Mandatory, Position = 1, ParameterSetName = 'Dir')]
     [string]$Dir,
 
@@ -161,7 +170,29 @@ foreach ($s in $Sub) {
     if (EnsureDir (Join-Path $assetDir $s)) { $made += $s }
 }
 
+# asset.json：记中文名 / 出处 / 标签（资产表的「中英对照」就靠它）
+# 只写你显式传了的字段，不覆盖已有内容。
+$metaPath = Join-Path $assetDir 'asset.json'
+$meta = [ordered]@{}
+if (Test-Path -LiteralPath $metaPath) {
+    try { $old = Get-Content -LiteralPath $metaPath -Raw -Encoding UTF8 | ConvertFrom-Json
+          foreach ($p in $old.PSObject.Properties) { $meta[$p.Name] = $p.Value } } catch { }
+}
+$meta['name_en'] = $Name
+if ($NameZh) { $meta['name_zh'] = $NameZh }
+if ($Source) { $meta['source'] = $Source }
+if ($Tags)   { $meta['tags']   = @($Tags) }
+if (-not $meta.Contains('created')) { $meta['created'] = (Get-Date -Format 'yyyy-MM-dd') }
+
+$wrote = $false
+if ($NameZh -or $Source -or $Tags -or -not (Test-Path -LiteralPath $metaPath)) {
+    $json = $meta | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText($metaPath, $json, (New-Object Text.UTF8Encoding $false))
+    $wrote = $true
+}
+
 "  资产  : $assetDir"
 if ($made.Count) { "  子目录: $($made -join ', ')" }
+if ($wrote) { "  元数据: asset.json（中文名：$(if ($NameZh) { $NameZh } else { '未填 ⚠️' })）" }
 "$tag`t$assetDir"
 exit 0
