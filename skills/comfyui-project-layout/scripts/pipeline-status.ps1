@@ -7,7 +7,7 @@
   MoE 式稀疏激活的门控输入有两路：**意图信号**（用户说了什么）和**进度信号**（工程走到哪一步）。
   意图信号本来就有；进度信号以前得靠模型自己翻目录猜，既贵又不可靠。本脚本补上这一路。
 
-  它扫描 projects/<slug>/30_shots/<seq>/<shot>/，为每个镜头判定**当前阶段**，
+  扫描 01_projects/<slug>/20_shots/<ep>/<seq>/<shot>/，为每个镜头判定**当前阶段**，
   并直接给出**该激活哪些专家（skill）**，以及**下一个动作**。
 
   阶段判定（按顺序，先命中先算）：
@@ -159,20 +159,29 @@ if ($projects.Count -eq 0) {
 
 $result = @()
 foreach ($proj in $projects) {
-    $shotsRoot = Join-Path $proj.FullName '30_shots'
+    $shotsRoot = Join-Path $proj.FullName '20_shots'
     $shots = @()
     if (Test-Path -LiteralPath $shotsRoot) {
-        foreach ($seq in (Get-ChildItem -LiteralPath $shotsRoot -Directory -ErrorAction SilentlyContinue)) {
-            foreach ($sh in (Get-ChildItem -LiteralPath $seq.FullName -Directory -ErrorAction SilentlyContinue)) {
-                $st = Resolve-Stage $sh.FullName
-                $shots += [pscustomobject]@{
-                    sequence = $seq.Name
-                    shot     = $sh.Name
-                    stage    = $st.stage
-                    detail   = $st.detail
-                    experts  = @($ROUTE[$st.stage].experts)
-                    next     = $ROUTE[$st.stage].next
-                }
+        # 新结构是 20_shots/<ep>/<seq>/<shot>/；单集项目允许省掉 <ep> 层。
+        # 所以不按固定深度数，而是**认"长得像镜头"的目录**：
+        # 含 10_ref / 30_key / 60_review 任一者即为镜头目录。两种深度都能覆盖。
+        $stageDirs = @('10_ref', '20_layout', '30_key', '40_video', '50_audio', '60_review')
+        $shotDirs = Get-ChildItem -LiteralPath $shotsRoot -Directory -Recurse -Depth 3 -ErrorAction SilentlyContinue |
+            Where-Object {
+                $kids = Get-ChildItem -LiteralPath $_.FullName -Directory -ErrorAction SilentlyContinue |
+                    ForEach-Object { $_.Name }
+                @($kids | Where-Object { $stageDirs -contains $_ }).Count -gt 0
+            }
+        foreach ($sh in $shotDirs) {
+            $seqName = Split-Path (Split-Path $sh.FullName -Parent) -Leaf
+            $st = Resolve-Stage $sh.FullName
+            $shots += [pscustomobject]@{
+                sequence = $seqName
+                shot     = $sh.Name
+                stage    = $st.stage
+                detail   = $st.detail
+                experts  = @($ROUTE[$st.stage].experts)
+                next     = $ROUTE[$st.stage].next
             }
         }
     }

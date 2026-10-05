@@ -6,21 +6,21 @@
 .DESCRIPTION
   固化的结构（依据 CGWire 管线提案 + Blender Studio 官方命名规范）：
 
-    projects/<project>/
+    <工作根>/01_projects/<project>/
     ├─ project.json               项目元数据（fps / 基准分辨率 / 风格 / 模型基线）
     ├─ 00_dev/                    企划与设定
     │   ├─ reference/             参考资料
     │   └─ style/                 风格板、色彩基调
-    ├─ 10_assets/                 可复用资产（与镜头严格分离）
+    ├─ （资产不在这里：见 <工作根>/00_assets/ 与 02_env/）
     │   ├─ characters/<asset>/
     │   ├─ props/<asset>/
     │   └─ environments/<asset>/
-    ├─ 20_pre/                    前期
+    ├─ 10_pre/                    前期
     │   ├─ script/                剧本
     │   ├─ storyboard/            分镜
     │   └─ previz/                动态分镜
-    ├─ 30_shots/<seq>/<shot>/     镜头主树（各环节见下）
-    ├─ 40_editorial/              剪辑与声音
+    ├─ 20_shots/<ep>/<seq>/<shot>/ 镜头主树（各环节见下）
+    ├─ 30_editorial/              剪辑与声音
     │   ├─ audio/
     │   ├─ export/
     │   └─ deliver/
@@ -28,7 +28,7 @@
 
   单个镜头的环节目录：
 
-    30_shots/<seq>/<shot>/
+    20_shots/<ep>/<seq>/<shot>/
     ├─ 10_ref/      参考、设定图
     ├─ 20_layout/   构图/关键帧草稿
     ├─ 30_key/      关键帧定稿
@@ -94,15 +94,26 @@ function EnsureDir([string]$p) {
     }
 }
 
+# ── 0) 三个根（总资产 / 项目 / 环境）────────────────────────────────────────
+# 结构见 SKILL.md §1.0：工作根下只有这三个主体文件夹。
+$workRoot = Split-Path (Split-Path $projRoot -Parent) -Parent   # 工作根
+if (-not $Episode) { $Episode = 'ep01' }
+foreach ($d in @(
+    '00_assets/01_characters', '00_assets/02_scenes', '00_assets/03_props',
+    '00_assets/04_3d', '00_assets/05_audio', '00_assets/06_text',
+    '00_assets/07_styles', '00_assets/08_fx', '00_assets/09_misc',
+    '02_env/workflows/image', '02_env/workflows/video', '02_env/workflows/edit',
+    '02_env/models', '02_env/tools'
+)) { EnsureDir (Join-Path $workRoot $d) }
+
 # ── 1) 项目骨架 ────────────────────────────────────────────────────────────
 EnsureDir $projRoot
 foreach ($d in @(
     '00_dev/reference', '00_dev/style',
-    '10_assets/characters', '10_assets/props', '10_assets/environments',
-    '20_pre/script', '20_pre/storyboard', '20_pre/previz',
-    '30_shots',
-    '40_editorial/audio', '40_editorial/edit', '40_editorial/export',
-    '40_editorial/edl', '40_editorial/current', '40_editorial/deliver',
+    '10_pre/script', '10_pre/storyboard', '10_pre/previz',
+    '20_shots',
+    '30_editorial/audio', '30_editorial/edit', '30_editorial/export',
+    '30_editorial/edl', '30_editorial/current', '30_editorial/deliver',
     '90_deliver'
 )) { EnsureDir (Join-Path $projRoot $d) }
 
@@ -130,14 +141,14 @@ if (-not (Test-Path -LiteralPath $metaPath)) {
 
 # ── 2) 序列 ────────────────────────────────────────────────────────────────
 if ($Sequence) {
-    EnsureDir (Join-Path $projRoot "20_pre/storyboard/$Sequence")
-    EnsureDir (Join-Path $projRoot "30_shots/$Sequence")
+    EnsureDir (Join-Path $projRoot "10_pre/storyboard/$Sequence")
+    EnsureDir (Join-Path $projRoot "20_shots/$Episode/$Sequence")
 }
 
 # ── 3) 镜头 ────────────────────────────────────────────────────────────────
 if ($Shot) {
-    $shotRoot = Join-Path $projRoot "30_shots/$Sequence/$Shot"
-    foreach ($d in @('10_ref', '20_layout', '30_key', '40_video', '50_audio', '60_review')) {
+    $shotRoot = Join-Path $projRoot "20_shots/$Episode/$Sequence/$Shot"
+    foreach ($d in @('old', '10_ref', '20_layout', '30_key', '40_video', '50_audio', '60_review')) {
         EnsureDir (Join-Path $shotRoot $d)
     }
     $cli = Join-Path $shotRoot 'shot.json'

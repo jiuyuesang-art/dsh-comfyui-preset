@@ -293,7 +293,7 @@ persona 里加了硬规则，`comfyui-review` 承载清单，`review.py` 承载�
 
 | 补进来的 | 依据 |
 |---|---|
-| **`edit/current/` 技巧**：各镜最新预览统一拷进 `40_editorial/current/`，剪辑只读它 → 打开剪辑永远是全片最新 | La Cuisine / Les Fées Spéciales |
+| **`edit/current/` 技巧**：各镜最新预览统一拷进 `30_editorial/current/`，剪辑只读它 → 打开剪辑永远是全片最新 | La Cuisine / Les Fées Spéciales |
 | ⚠️ **batch seed 陷阱**：ComfyUI 一次 batch 的 PNG 元数据**只有初始 seed**，逐图实际 seed 会丢 → 侧车必须写 `perImageSeeds` 数组 | ComfyUI Discussion #1124（**这条直接决定侧车能不能真复现**） |
 | **模型记 hash 不记文件名**：模型会改名、同名不同内容 | Civitai ModelHash |
 | **归档=四件套**：图 + workflow JSON + params.json + models.json | ComfyUI Workflow Metadata 官方文档 + MLflow artifact 约定 |
@@ -341,8 +341,8 @@ plugin_manager  action=install_bundle   target=<本目录的绝对路径>
 
 **文件管理（`comfyui-project-layout`）的三条验收：**
 
-- 说「**帮我建一个动画项目**」→ 应加载 `comfyui-project-layout`，并在工作区生成 `projects/<slug>/` 的完整骨架（`00_dev` / `10_assets` / `20_pre` / `30_shots` / `40_editorial` / `90_deliver`）+ `project.json`
-- 说「**帮我加一个镜头**」→ 应生成 `30_shots/<seq>/<shot>/` 下的 5 个环节目录；给它一个不合规的名字（如 `My Shot`）应当**被拒绝并说明格式**
+- 说「**帮我建一个动画项目**」→ 应加载 `comfyui-project-layout`，并在工作区生成 `01_projects/<slug>/` 的完整骨架（`00_dev` / `10_assets` / `20_pre` / `30_shots` / `40_editorial` / `90_deliver`）+ `project.json`
+- 说「**帮我加一个镜头**」→ 应生成 `20_shots/<ep>/<seq>/<shot>/` 下的 5 个环节目录；给它一个不合规的名字（如 `My Shot`）应当**被拒绝并说明格式**
 - 说「**把这个文件重出一版**」（指向一个已存在的文件）→ 🔴 **必须先看到它跑 `safe-write.ps1`**，旧文件出现在**同目录的 `old/`** 里且带时间戳；随后应写 `.meta.json` 侧车。**如果它直接把文件覆盖了，就是违规。**
 
 **视觉审查（`comfyui-review`）的三条验收：**

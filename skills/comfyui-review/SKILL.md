@@ -38,7 +38,7 @@ whenToUse: 出图/改图/生成视频完成后；用户提到 审查 / 检查 / 
 
 ⑤ 生成前后对比图（脚本见 §4）
 
-⑥ 落盘报告 → 30_shots/<seq>/<shot>/60_review/<seq>_<shot>-review-v<NNN>.md
+⑥ 落盘报告 → 20_shots/<ep>/<seq>/<shot>/60_review/<seq>_<shot>-review-v<NNN>.md
 
 ⑦ present 给用户，明确说「等你 review」
 ```
@@ -199,7 +199,7 @@ $RUNPY  = "<bundle 根>/tools/run-python.ps1"   # 与 skills/ 同级
 
 ## 7. 报告模板（固定三段，缺一不可）
 
-落盘到 `30_shots/<seq>/<shot>/60_review/<seq>_<shot>-review-v<NNN>.md`：
+落盘到 `20_shots/<ep>/<seq>/<shot>/60_review/<seq>_<shot>-review-v<NNN>.md`：
 
 ````markdown
 # <seq>_<shot> 审查报告 · v<NNN>

@@ -107,9 +107,9 @@ whenToUse: 用户提到出图/绘图/画图/生成图片/改图/抠图/上色/�
 
 > ⚠️ **流程到 ⑤c 才算完。** 拿到产物直接丢给用户 = 违规。没看图就说"效果不错" = 违规。
 
-**`out_dir` 怎么定**：不要往 `out/` 里平铺。按产物性质落到 `projects/<项目>/30_shots/<seq>/<shot>/` 下的环节目录
+**`out_dir` 怎么定**：不要往 `out/` 里平铺。按产物性质落到 `01_01_projects/<项目>/20_shots/<seq>/<shot>/` 下的环节目录
 （构图→`20_layout`，关键帧→`30_key`，视频→`40_video`，音频→`50_audio`），
-设定图落 `10_assets/`，分镜落 `20_pre/storyboard/`，试参数落 `00_dev/`。
+设定图落 `10_assets/`，分镜落 `10_pre/storyboard/`，试参数落 `00_dev/`。
 完整规范与命名法见 `comfyui-project-layout`。
 
 **改图类任务注意**：输入图片必须先放进 ComfyUI 的 `input\` 目录 —— 用 `mcp__comfymcp__upload_file`，传**绝对路径**。

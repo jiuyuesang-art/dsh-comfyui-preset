@@ -33,9 +33,9 @@
 
 .EXAMPLE
   # 写文件之前先调用它；无论它有没有移动东西，之后都照常写你的文件
-  ./safe-write.ps1 "projects/demo/30_shots/010_intro/010_0010/30_key/010_0010-key-v001.png"
+  ./safe-write.ps1 "01_projects/demo/20_shots/ep01/sq010_intro/sh0010_arrive/30_key/ep01_sq010_sh0010-key-v001.png"
   # 输出示例：
-  # ARCHIVED\tprojects/.../old/010_0010-key-v001.20261003-183012.png
+  # ARCHIVED\t01_projects/.../old/ep01_sq010_sh0010-key-v001.20261003-183012.png
   # NOOP\t\t(目标不存在，无需归档)
 #>
 [CmdletBinding()]

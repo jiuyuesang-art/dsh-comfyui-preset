@@ -247,11 +247,11 @@ booru 的 tag 是**人工维护的受控词表 + 使用量排序**（如 `blue_h
 按 `comfyui-project-layout` 的规范落盘：
 
 ```
-projects/<项目>/
+01_projects/<项目>/
 ├─ 00_dev/reference/          ★ 项目级参考（风格板、材质、配色、考据图）
 │   ├─ <名称>.png
 │   └─ <名称>.meta.json       ← 必记 source（站点 + URL + 作者/馆藏号）
-└─ 30_shots/<seq>/<shot>/10_ref/   ★ 镜头级参考
+└─ 20_shots/<ep>/<seq>/<shot>/10_ref/   ★ 镜头级参考
 ```
 
 - **下载的参考图** → `00_dev/reference/`（项目级）或 `10_ref/`（镜头级）
