@@ -661,7 +661,7 @@ $S = "<本 skill 所在目录>/scripts"     # 路径可从 skill 工具给出的
 | `key-needs-review` | 关键帧就绪但**没审过** | 🔴 review（强制） |
 | `key-rework` | 审查判定 NEEDS_WORK / FAIL | prompt-craft + mcp-ops |
 | `key-done` | 审过了，可交付 | —— |
-| `video-needs-review` / `video-rework` / `video-done` | 同上，针对 `40_video` | review + minimax-h3-docs |
+| `video-needs-review` / `video-rework` / `video-done` | 同上，针对 `40_video` | review + study/minimax-h3 |
 
 > 判定从 `60_review/` 里最新的那份报告的「判定：」一行抓取；抓不到就当作未审。
 
@@ -675,7 +675,7 @@ $S = "<本 skill 所在目录>/scripts"     # 路径可从 skill 工具给出的
 3) 放参考图    20_shots/ep01/sq010_intro/sh0010_arrive/10_ref/     ← 命名 010_0010-ref-v001.png
 4) 出构图草稿  …/20_layout/010_0010-layout-v001.png     ← 用 comfyui-mcp-ops 的五步流程
 5) 定关键帧    …/30_key/ep01_sq010_sh0010-key-v001.png           ← **紧接着写侧车**
-6) 出视频      …/40_video/010_0010-video-v001.mp4       ← H3，先看 minimax-h3-docs 的显存告警
+6) 出视频      …/40_video/010_0010-video-v001.mp4       ← H3，先看 study/minimax-h3 的显存告警
 7) 配音/音效   …/50_audio/010_0010-audio-v001.wav
 8) 剪辑       30_editorial/export/
 9) 交付       90_deliver/

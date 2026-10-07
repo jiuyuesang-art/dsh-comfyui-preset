@@ -79,7 +79,7 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 | | 内容 |
 |---|---|
 | **1 个预设** | `id: comfyui`，显示名【ComfyUI 创作模式】，roster 排位 `order: 5` |
-| **10 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检）· `comfyui-project-layout`（文件管理）· `art-reference`（参考检索）· `comfyui-docs` · `qwen-image-2-1-docs` · `minimax-h3-docs`（三套官方文档快照） |
+| **8 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检）· `comfyui-project-layout`（文件管理）· `art-reference`（参考检索）· **`study`（知识获取流程 —— 用到外部软件/模型时先查官方）** |
 | **14 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · skill-filesystem · tool-skill · compaction 组(3) · ask-user · todo · web · present |
 
 ### 技术要点：MoE 式稀疏加载
@@ -140,7 +140,7 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 dsh-comfyui-preset/
 ├─ package.json          # bundle 声明（dsh.bundle.patch 指向补丁层）
 ├─ cordis.patch.yml      # ★ 主体：1 行 preset 声明 + 14 行插件
-├─ skills/               # ★ 10 个专家手册（每个是一个带 SKILL.md 的目录）
+├─ skills/               # ★ 8 个专家手册（每个是一个带 SKILL.md 的目录）
 ├─ tools/                # 5 个工具脚本
 ├─ README.md
 └─ INSTALL.md
@@ -150,7 +150,7 @@ dsh-comfyui-preset/
 
 | 想改什么 | 改哪里 | 怎么做 |
 |---|---|---|
-| **换模型**（用你本机的模型） | `skills/qwen-image-2-1-docs/` 等 | 把官方文档快照换成你模型的；改 `references/` 里的参数表 |
+| **换模型**（用你本机的模型） | `02_env/study/qwen-image-2-1/` 等 | 把官方文档快照换成你模型的；改 `references/` 里的参数表 |
 | **换工作流** | `02_env/workflows/` | 把你的工作流 JSON 放进去，在 `comfyui-mcp-ops` 的 recipes 里登记 |
 | **加/减专家** | `cordis.patch.yml` → `config.plugins` | 加一行 `{id, name: '@deepseek-ai/dsh-...'}` 即可 |
 | **改人格与规则** | `cordis.patch.yml` → `persona` 行的 `config.prefix` | ⚠️ **只放"何时激活谁"，细节进 skill**（见下） |
@@ -199,9 +199,9 @@ DSH 会读文件、改文件、跑验证 —— **和它改任何代码项目没
 
 | 官方说明书 | 快照位置 |
 |---|---|
-| **[ComfyUI 官方文档](https://docs.comfy.org)** | `skills/comfyui-docs/` |
-| **[Qwen Image 2.1 官方说明](https://docs.comfy.org/tutorials/image/qwen/qwen-image-2-1)**（ComfyUI 官方教程） | `skills/qwen-image-2-1-docs/` |
-| **[MiniMax H3 官方说明](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)**（ComfyUI 官方教程） | `skills/minimax-h3-docs/` |
+| **[ComfyUI 官方文档](https://docs.comfy.org)** | `02_env/study/comfyui/` |
+| **[Qwen Image 2.1 官方说明](https://docs.comfy.org/tutorials/image/qwen/qwen-image-2-1)**（ComfyUI 官方教程） | `02_env/study/qwen-image-2-1/` |
+| **[MiniMax H3 官方说明](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)**（ComfyUI 官方教程） | `02_env/study/minimax-h3/` |
 
 > ⚠️ **这些是「整理与索引」，不是原文转载。**
 > 每篇 `references/` 顶部都标注了**原始 URL 与抓取时间**，可自行回源核对。
@@ -217,7 +217,7 @@ DSH 会读文件、改文件、跑验证 —— **和它改任何代码项目没
 具体来说：
 
 - 用 **DSH 内置的「创造模式」**（`preset-cordis`）作为工作环境 —— 它提供写插件、改配置、验证效果的完整能力
-- 用 **DeepSeek V4.1** 模型作为对话方，逐步产出 `cordis.patch.yml`、10 个 skill、工具脚本与文档
+- 用 **DeepSeek V4.1** 模型作为对话方，逐步产出 `cordis.patch.yml`、8 个 skill、工具脚本与文档
 - 换句话说：**它是「用 DSH 造 DSH 扩展」的产物** —— 一边造一边用，规则与手册都经过实际使用的打磨
 
 这也意味着：**如果你觉得这套结构好用，你完全可以照同样方式造自己的 preset。**

@@ -148,6 +148,6 @@ $PY = "C:\easyaiforcomfyui\ComfyUI-EasyManager\win\envs\comfyui\python.exe"   # 
 | **审查视频** | `frames.ps1 sheet` | `comfyui-review`（抽帧看是它的硬要求） |
 | **做前后对比图** | `media.py side` | `comfyui-review`（报告模板第一段） |
 | **标出缺陷位置** | `media.py mark` | `comfyui-review`（结论要指向画面可见位置） |
-| **裁 H3 音轨** | `audio.ps1 trim` | `minimax-h3-docs`（音频章节） |
+| **裁 H3 音轨** | `audio.ps1 trim` | `study/minimax-h3`（音频章节） |
 | **产物落盘前归档** | —— | `comfyui-project-layout` 的 `safe-write.ps1` |
 | **显存不足想降分辨率** | `media.py resize` | `comfyui-perf`（参考图可以降规格） |

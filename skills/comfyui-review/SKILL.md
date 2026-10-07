@@ -133,9 +133,9 @@ $RUNPY  = "<bundle 根>/tools/run-python.ps1"   # 与 skills/ 同级
 
 ② 第二轮：先查再改（**不要凭感觉瞎试**）
    按顺序查：
-     a. 本地文档 —— `qwen-image-2-1-docs` / `minimax-h3-docs` / `comfyui-docs`
+     a. 本地文档 —— `study/qwen-image-2-1` / `study/minimax-h3` / `study/comfyui`
         （本机快照，最快；含已知限制与坑）
-     b. 官方文档 —— `comfyui-docs` 的全站索引 → 检索 docs.comfy.org
+     b. 官方文档 —— `study/comfyui` 的全站索引 → 检索 docs.comfy.org
      c. 社区方案 —— `web_search` / `multi_search` / `platform_search`
         （Reddit / GitHub Issues / Bilibili / 官方论坛）
    找到**有依据的**方案后再改一次，**再审查**。
@@ -260,4 +260,4 @@ $RUNPY  = "<bundle 根>/tools/run-python.ps1"   # 与 skills/ 同级
 | 工具怎么调、工作流怎么跑 | `comfyui-mcp-ops` |
 | 提示词怎么写（改 prompt 时） | `comfyui-prompt-craft` |
 | 产物落哪、命名、旧版本归档 | `comfyui-project-layout` |
-| **看懂了但不知道某模型能力边界** | `qwen-image-2-1-docs` / `minimax-h3-docs` |
+| **看懂了但不知道某模型能力边界** | `study/qwen-image-2-1` / `study/minimax-h3` |

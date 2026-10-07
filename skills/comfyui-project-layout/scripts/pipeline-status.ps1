@@ -138,8 +138,8 @@ $ROUTE = @{
     'key-needs-review'   = @{ experts = @('comfyui-review'); next = '🔴 强制：read_image 真看图 → 落盘 60_review 报告 → 交人 review' }
     'key-rework'         = @{ experts = @('comfyui-prompt-craft', 'comfyui-mcp-ops'); next = '按报告建议改参数重出；覆盖前先 safe-write.ps1' }
     'key-done'           = @{ experts = @(); next = '可交付：present 给用户；若还要出视频则继续 40_video' }
-    'video-needs-review' = @{ experts = @('comfyui-review', 'minimax-h3-docs'); next = '🔴 抽帧审查（回看显存告警），报告落 60_review' }
-    'video-rework'       = @{ experts = @('comfyui-prompt-craft', 'minimax-h3-docs'); next = '按报告改参数重出' }
+    'video-needs-review' = @{ experts = @('comfyui-review', 'study'); next = '🔴 抽帧审查（回看显存告警），报告落 60_review' }
+    'video-rework'       = @{ experts = @('comfyui-prompt-craft', 'study'); next = '按报告改参数重出' }
     'video-done'         = @{ experts = @(); next = '可交付' }
 }
 

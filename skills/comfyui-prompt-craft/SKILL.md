@@ -6,7 +6,7 @@ whenToUse: 用户提到 写提示词 / 提示词 / prompt / 怎么描述 / 出�
 
 # 提示词工程手册
 
-> **这份手册是「动手用的」。** 要查官方原文与依据，去 `qwen-image-2-1-docs` / `minimax-h3-docs` 各自的 `04-prompt-guide.md`。
+> **这份手册是「动手用的」。** 要查官方原文与依据，去 `study/qwen-image-2-1` / `study/minimax-h3` 各自的 `04-prompt-guide.md`。
 > 目标只有一个：交付**可以直接粘进 ComfyUI 的成品提示词**，不是写作教学。
 
 ---
@@ -193,7 +193,7 @@ no logos, no watermark, no captions, pure imagery only.
 > 并**先告诉用户这是一次偏离官方路径的尝试**。
 
 **③ H3 一律不要写负向词** —— 没有通道，且有害。想说"不要有旁白"，
-要**改成正面描述该镜头里实际存在什么声音**（见 `minimax-h3-docs` 音频章节）。
+要**改成正面描述该镜头里实际存在什么声音**（见 `study/minimax-h3` 音频章节）。
 
 ---
 
@@ -393,6 +393,6 @@ The camera holds a static shot as the runner exits the frame.
 
 | 要查什么 | 去哪 |
 |---|---|
-| Qwen 官方示例、PE 改写模型、Mask Editor 机制、cfg 与文字渲染的关系 | `qwen-image-2-1-docs` → `04-prompt-guide.md` |
-| H3 官方两份提示词指南全文、说话人/对白/歌唱、R2V 全参考结构与引用标签、完整官方样例 | `minimax-h3-docs` → `04-prompt-guide.md` |
+| Qwen 官方示例、PE 改写模型、Mask Editor 机制、cfg 与文字渲染的关系 | `study/qwen-image-2-1` → `04-prompt-guide.md` |
+| H3 官方两份提示词指南全文、说话人/对白/歌唱、R2V 全参考结构与引用标签、完整官方样例 | `study/minimax-h3` → `04-prompt-guide.md` |
 | 工具怎么调、工作流怎么跑、本机模型与配方 | `comfyui-mcp-ops` |
