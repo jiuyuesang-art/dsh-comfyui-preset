@@ -17,3 +17,7 @@ node_modules/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# 配置备份（本地用，不进仓库）
+*.bak-*
+*.bak

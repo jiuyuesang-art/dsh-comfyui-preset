@@ -4,6 +4,10 @@ description: 动画项目文件管理规范。建项目/加镜头/决定产物�
 whenToUse: 用户提到 建项目 / 加镜头 / 存哪 / 目录 / 命名 / 文件管理 / 版本 / 覆盖 / 回滚 / 归档 / 总资产 / 工作流放哪 时
 ---
 
+> 🔴 **本手册引用的 `study/<主题>` 是本机缓存，不随 preset 分发。**
+> 全新安装时 `02_env/study/` 是空的 —— **这时按 `study` 手册去官方抓一份**（随需下载），
+> 而不是因为"文件不存在"就跳过。**本地有就用本地的，没有就去抓。**
+
 # 动画项目文件管理规范
 
 > 这套规范不是我自己编的：目录骨架取自 [CGWire 的管线目录提案](https://blog.cg-wire.com/cg-pipeline-a-proposal-for-your-file-hierarchy/)（Kitsu 创始人，服务大量动画/VFX 工作室），命名法取自 [Blender Studio 官方命名规范](https://studio.blender.org/tools/naming-conventions/shared-folder-structure)（真实在产项目的公开规范）。
