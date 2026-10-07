@@ -1,7 +1,10 @@
 # dsh-comfyui-preset
 
 > 给 **DeepSeek Harness（DSH）** 的【ComfyUI 创作模式】Agent 预设。
-> 装上它，DSH 就能**不用思考地**驱动你本机的 ComfyUI 出图、改图、生视频 —— 并自带一套专业动画项目的文件管理、视觉质检与官方文档知识库。
+> 装上它，DSH 就能**不用思考地**驱动你本机的 ComfyUI 出图、改图、生视频 —— 并自带一套专业动画项目的文件管理、视觉质检与媒体处理能力。
+>
+> **知识不是预置的，而是随用随取的**：用到任何软件 / 模型 / 插件时，它**先去查官方**，
+> 把学到的落盘成**你能直接打开读的** `study/` 笔记，再照官方行动（见 §2「知识获取流程」）。
 
 ---
 
@@ -79,26 +82,51 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 | | 内容 |
 |---|---|
 | **1 个预设** | `id: comfyui`，显示名【ComfyUI 创作模式】，roster 排位 `order: 5` |
-| **8 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检）· `comfyui-project-layout`（文件管理）· `art-reference`（参考检索）· **`study`（知识获取流程 —— 用到外部软件/模型时先查官方）** |
+| **8 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检）· `comfyui-project-layout`（文件管理 + 生长式结构 + 资产表）· `art-reference`（参考检索）· **`study`（知识获取流程 —— 用到外部软件 / 模型时先查官方）** |
 | **14 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · skill-filesystem · tool-skill · compaction 组(3) · ask-user · todo · web · present |
+| **6 个工具脚本** | `verify-preset`（自检）· `pack-preset`（打包）· `run-python`（编码安全的 Python）· **`wait-job`（真推送等待）** · `check-encoding` · `asar-modules` |
 
 ### 技术要点：MoE 式稀疏加载
 
 **常驻一个轻量路由器，专家按需激活** —— 这是本 preset 省 token 的核心。
 
-| 层 | 体量 | 何时进上下文 |
+| 层 | 体量（实测） | 何时进上下文 |
 |---|---|---|
-| persona（路由器） | ≈ **3,840 tokens** | **每轮** |
-| 9 个 description（路由表） | ≈ **870 tokens** | **每轮** |
-| **常驻合计** | ≈ **4,710 tokens/轮** | |
-| 9 个专家正文 | ≈ 56,000 tokens | 按需，一次最多 1–2 个 |
-| 参考资料 | ≈ 344,000 tokens | 再按需，只取具体那一篇 |
+| persona（路由器） | ≈ **5,050 tokens** | **每轮** |
+| 8 个 description（路由表） | ≈ **600 tokens** | **每轮** |
+| **常驻合计** | ≈ **5,650 tokens/轮** | |
+| 8 个专家正文 | ≈ 76,600 tokens | 按需，一次最多 1–2 个 |
+| 各手册的 `references/` | ≈ 36,100 tokens | 再按需，只取具体那一篇 |
+| **外部知识**（`study/`） | **不占 bundle** | 用到才查，摘要 ≤2000 tokens 进上下文 |
+
+> 对比：全部预置手册正文约 **77K tokens** —— 一次全读会直接撑爆上下文。
+> 稀疏加载把它压到**每轮 5.6K**。
 
 **三条纪律**（写在 persona 里，靠它才真的生效）：
 
 1. **加载预算**：一次最多 1–2 个专家手册。「以防万一把相关的都读一遍」是最贵的错误。
 2. **配方延迟加载**：成品配方在 `references/recipes.md`，只在真要跑工作流时读。
 3. **参考只取具体那篇**：不要整目录读。
+
+### 技术要点：知识获取流程（`study`）
+
+**知识不预置在 preset 里** —— 预置有两个根本问题：**普遍性不足**（只能覆盖预置的领域）
+与**体积膨胀**（文档越加越多）。所以改成**流程**：
+
+| 步骤 | 做什么 |
+|---|---|
+| **① 触发判据** | 这个决定是否依赖「我可能不知道 / 记错 / 版本已变」的外部事实，**且查错了代价高**？ |
+| **② 查缓存** | 本地 `study/`（项目级 → `02_env/study/`）→ 没有再联网 |
+| **③ 有官方文档** | 🔴 **交叉验证确认是官方**（域名 + 从官方入口能走到 + 多处印证）· 学**方法思路**不照抄参数 · 🔴 **官方 ≠ 无风险**，行为仍过风险管控 |
+| **④ 无官方（创造性领域）** | 找**大师 / 经典 / 权威**参考并**标明级别** · 用户给的优先 · 候选**列出来让用户挑** |
+| **⑤ 查不到** | 🔴 **停下给三选一**：跳过（标注未经官方确认）/ 你提供文档 / 改善网络后重试 |
+| **⑥ 落盘** | `summary.md`（**上限 2000 tokens，无下限，每条带原文指针**）+ `source.md` + `refs/`；长文档**派子代理读并总结** |
+
+**两级缓存**：通用知识 → `02_env/study/<主题>/`；项目特有 → `01_projects/<项目>/study/<主题>/`
+
+> **为什么是"两级 + 摘要"**：`summary.md` 进上下文，`refs/` 按需取原文 ——
+> 这跟 skill 的 `SKILL.md` + `references/` 是同一个渐进披露思路，只是内容**不再预置**。
+> **全部是人类可读的 Markdown**，你可以直接打开看"它学到了什么"。
 
 ### 技术要点：产物落盘结构
 
@@ -108,18 +136,73 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 <工作根>/
 ├─ 00_assets/    总资产 —— 跨项目复用（01_characters / 02_scenes / 04_3d / 05_audio …）
 ├─ 01_projects/  项目 —— ep01/ → sq010_temple/ → sh0010_arrive/
-└─ 02_env/       环境 —— workflows / models 清单 / tools
+└─ 02_env/       环境 —— workflows / models 清单 / tools / **study（学到的知识）**
 ```
 
 - **镜头码** `ep01_sq010_sh0010`，全项目唯一引用锚点
 - **镜头号按 10 递增**（`0010/0020/0030`），中途插镜取 `0015` —— **永不重排**
 - **`old/` 在每条资产/每个镜头自己的目录下**，保存舍弃或中间的产物，随时可回滚
 
+### 🔴 技术要点：生长式结构 —— **结构不变，只按需创建**
+
+> **目录名与层级是固定的，但什么时候建是按需的 —— 没有东西要放，就不建它。**
+
+| 情况 | 做 / 不做 |
+|---|---|
+| 这次**没有音频** | ❌ 不建 `50_audio/` |
+| 不用 3D | ❌ 不建 `00_assets/04_3d/` |
+| 还没有任何角色资产 | ❌ 不建 `00_assets/01_characters/` |
+| 第一次要往 `30_key/` 放图 | ✅ 建它 |
+
+**为什么**：空目录是噪音、会误导判断（看到 `50_audio/` 会以为有音频）、
+一次建全套会让每个项目长得一样看不出进度。**反过来，目录本身就是进度。**
+
+**唯一入口**是 `comfyui-project-layout` 的 `scripts/ensure.ps1`（幂等）：
+```powershell
+& ensure.ps1 -Dir 01_projects/demo/20_shots/ep01/sq010/sh0010/30_key
+& ensure.ps1 -Asset characters -Name kirito -NameZh 桐人 -Sub ref,sheet
+```
+`new-project.ps1` **只建项目根 + `project.json`**，不铺骨架。
+
+### 技术要点：资产路径表
+
+资产多了不好找。自动生成**两张带预览图与中英对照的索引**：
+
+| 表 | 位置 | 内容 |
+|---|---|---|
+| **总资产表** | `00_assets/资产表.md` | 预览图 / 中文名 / 英文名 / 编号 / 出处 / 标签 / 文件数 / 最近更新 / 路径 |
+| **分镜资产表** | `<镜头目录>/资产表.md` | **这个镜头用到哪些资产** |
+
+```powershell
+& asset-index.ps1 -All          # 总表 + 所有分镜表
+```
+
+- **预览图是缩略图**（生成到 `00_assets/.index/thumbs/`，按源文件内容哈希命名）——
+  表保持轻量，100 个资产也不拖垮
+- **中文名**来自每个资产的 `asset.json`（`ensure.ps1 -NameZh` 直接写）；没填的标 **⚠️ 待填**
+- **分镜表识别资产**：`shot.json` 的 `assets[]` + `10_ref/` 文件名反查
+
+### 技术要点：长任务用**真推送**等，不轮询
+
+MCP 是同步模型，`comfy-mcp` 不推进度。**让模型反复去问是最贵的做法** ——
+每次询问一次完整往返 + 上下文开销，而任务耗时不会因为多问而变短。
+
+**做法**：`run_workflow wait=false` 拿 `prompt_id` + **`client_id`** → 起 `tools/wait-job.ps1`
+连 ComfyUI 的 WebSocket **阻塞等服务端推事件** → 完成时退出 → **DSH 主动唤醒模型**。
+
+> 🔴 **`-ClientId` 必须传**：查 ComfyUI 源码（`execution.py`）确认执行事件是**定向发送**的
+> （`send_sync("executing", {...}, server.client_id)`），只发给提交时那个 client_id。
+> **随机 id 连上去一条事件都收不到** —— 实测验证过。
+
+**默认不设超时** —— 任务卡住就一直挂着，**由人决定要不要终止**（视频最长 58 分钟也等得起）。
+**等待期间模型 turn 数 = 0。**
+
 ### 技术要点：它怎么"不用思考"
 
 - **persona 常驻触发规则** —— 什么时候该加载哪个专家、什么绝不能做，写在每轮都读的地方
 - **MCP 工具决策表** —— 哪个任务用哪个工具、参数怎么填，不用现查
-- **官方文档离线快照** —— 三个模型的文档已落盘，断网也能查
+- **进度信号自动路由** —— `pipeline-status.ps1` 报告每个镜头走到哪一步，**并直接写出该激活哪些专家**
+- **外部知识先查官方** —— 不再靠模型记忆猜（见上「知识获取流程」）
 
 ---
 
@@ -141,20 +224,21 @@ dsh-comfyui-preset/
 ├─ package.json          # bundle 声明（dsh.bundle.patch 指向补丁层）
 ├─ cordis.patch.yml      # ★ 主体：1 行 preset 声明 + 14 行插件
 ├─ skills/               # ★ 8 个专家手册（每个是一个带 SKILL.md 的目录）
-├─ tools/                # 5 个工具脚本
+├─ tools/                # 6 个工具脚本
 ├─ README.md
 └─ INSTALL.md
 ```
 
-**六种常见改造**：
+**七种常见改造**：
 
 | 想改什么 | 改哪里 | 怎么做 |
 |---|---|---|
-| **换模型**（用你本机的模型） | `02_env/study/qwen-image-2-1/` 等 | 把官方文档快照换成你模型的；改 `references/` 里的参数表 |
+| **换模型**（用你本机的模型） | `02_env/study/<你的模型>/` | **建一个 study 条目**：`summary.md`（参数要点）+ `source.md`（官方出处）+ `refs/`（原文）。也可以直接让 DSH 去查官方再落盘 |
 | **换工作流** | `02_env/workflows/` | 把你的工作流 JSON 放进去，在 `comfyui-mcp-ops` 的 recipes 里登记 |
 | **加/减专家** | `cordis.patch.yml` → `config.plugins` | 加一行 `{id, name: '@deepseek-ai/dsh-...'}` 即可 |
 | **改人格与规则** | `cordis.patch.yml` → `persona` 行的 `config.prefix` | ⚠️ **只放"何时激活谁"，细节进 skill**（见下） |
 | **加自己的知识库** | `skills/<你的名字>/SKILL.md` | 建目录 + 写 frontmatter（`name` 用 kebab-case、`description` 要含触发词） |
+| **喂它外部知识** | `02_env/study/<主题>/` | 把官方文档 / 你自己的资料放进去，写一份 `summary.md` 摘要 —— 它下次就会先查这里 |
 | **改预设显示名** | `cordis.patch.yml` → `config.id` / `config.name` | `id` 改了就换了身份，注意别和内置预设撞名 |
 
 **改完怎么生效**：
@@ -195,19 +279,31 @@ DSH 会读文件、改文件、跑验证 —— **和它改任何代码项目没
 
 ### 官方说明书来源
 
-本项目**引用并整理了下列官方说明书**，做成离线快照供 Agent 按需查阅：
+**知识不再预置在 preset 里** —— 而是随用随取（见 §2「知识获取流程」）。
 
-| 官方说明书 | 快照位置 |
+下列官方说明书已**播种为本机 `02_env/study/` 的初始缓存**（从早期预置快照迁移而来，
+原文一字未丢），此后由 `study` 流程按需刷新：
+
+| 官方说明书 | 本机位置 |
 |---|---|
 | **[ComfyUI 官方文档](https://docs.comfy.org)** | `02_env/study/comfyui/` |
 | **[Qwen Image 2.1 官方说明](https://docs.comfy.org/tutorials/image/qwen/qwen-image-2-1)**（ComfyUI 官方教程） | `02_env/study/qwen-image-2-1/` |
 | **[MiniMax H3 官方说明](https://docs.comfy.org/tutorials/video/minimax/minimax-h3)**（ComfyUI 官方教程） | `02_env/study/minimax-h3/` |
 
+每个条目都是这个结构：
+
+```
+02_env/study/<主题>/
+├─ summary.md      ★ 进上下文的就是这个（≤2000 tokens，每条带原文指针）
+├─ source.md       ★ 出处、抓取时间、可信度评级、交叉验证记录
+└─ refs/           细节原文（按需取，不进上下文）
+```
+
 > ⚠️ **这些是「整理与索引」，不是原文转载。**
-> 每篇 `references/` 顶部都标注了**原始 URL 与抓取时间**，可自行回源核对。
-> **官方文档更新后，请以官方为准** —— 快照可能滞后。
+> 每篇 `refs/` 顶部都标注了**原始 URL 与抓取时间**，可自行回源核对。
+> **官方文档更新后，请以官方为准** —— 缓存可能滞后（`study` 流程有 90 天失效检查）。
 >
-> 本 preset 只做**参数提取、结构整理与要点索引**，用于让 Agent 不必每次联网查文档。
+> 本项目只做**参数提取、结构整理与要点索引**，用于让 Agent 不必每次联网查文档。
 > 官方说明书的**著作权归各自所有者**。
 
 ### 创作来源
