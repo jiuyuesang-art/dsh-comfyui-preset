@@ -305,5 +305,5 @@
                 wincu: windows-computer-use
               workRoots:
                 - 'H:/作品/AI/ART5'
-              oncePerSession: true
+              oncePerSession: false   # 默认每次都查；改 true 会变钝（放行后整个进程不再检查，清空 study/ 也不会重拦）
               exemptPrefix: '.gate-exempt-'

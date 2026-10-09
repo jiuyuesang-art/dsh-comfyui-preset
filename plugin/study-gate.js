@@ -34,8 +34,18 @@ const DEFAULTS = {
   },
   // 工作根候选（含 00_assets / 01_projects / 02_env 的那层）。空 = 从 cwd 向上探测。
   workRoots: [],
-  // 每个会话只拦一次（放行后记住）
-  oncePerSession: true,
+  // 🔴 默认 false = **每次都查**。
+  //
+  //    早先默认 true（放行后记住），但那有两个缺陷：
+  //      ① `passed` 是**插件实例级**的 Set，活到 DSH 进程结束 —— 不是会话级。
+  //         于是「有一次通过 → 整个进程内都不再检查」，清空 study/ 也不会重新拦。
+  //      ② exec.agent?.id 是**可选**的，缺失时 key 退化成 '?|<server>'，
+  //         所有会话共用一个 key —— 一个会话通过 = 全部放行。
+  //    两个缺陷都朝「少检查」偏，会削弱门禁本身。改成每次查。
+  //
+  //    代价：每次 MCP 调用多约 1ms 的文件检查（相对 MCP 的网络往返可忽略）。
+  //    想省这点开销再开 true —— 但要知道它会变"钝"。
+  oncePerSession: false,
   // 豁免文件（相对 02_env/study/）。存在即放行，用于"本次确实不需要"。
   exemptPrefix: '.gate-exempt-',
 }
