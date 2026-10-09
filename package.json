@@ -21,6 +21,7 @@
     "cordis.patch.yml",
     "skills/",
     "tools/",
+    "plugin/",
     "README.md",
     "INSTALL.md"
   ],

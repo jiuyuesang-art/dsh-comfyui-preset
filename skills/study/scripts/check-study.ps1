@@ -84,40 +84,46 @@ if ($entries.Count -eq 0) {
 $ok = 0; $bad = 0; $badList = @()
 
 foreach ($e in ($entries | Sort-Object FullName -Unique)) {
-    $sum = Join-Path $e.FullName 'summary.md'
     $src = Join-Path $e.FullName 'source.md'
     $ref = Join-Path $e.FullName 'refs'
-    $les = Join-Path $e.FullName 'lessons.md'
 
-    $hasSum = Test-Path -LiteralPath $sum
     $hasSrc = Test-Path -LiteralPath $src
     $hasRef = Test-Path -LiteralPath $ref
     $refFiles = if ($hasRef) { @(Get-ChildItem -LiteralPath $ref -File -Recurse -ErrorAction SilentlyContinue) } else { @() }
     $hasRefContent = $refFiles.Count -gt 0
 
-    # source.md 里有没有真 URL
+    # 🔴 用户规则：study/ 只存原档 —— 我们自己写的 summary / lessons 不该在这里
+    $intruders = @()
+    foreach ($n in @('summary.md', 'lessons.md')) {
+        if (Test-Path -LiteralPath (Join-Path $e.FullName $n)) { $intruders += $n }
+    }
+
+    # source.md 里有没有真 URL，或如实声明「无官方文档」
     $srcUrl = ''
+    $noOfficial = $false
     if ($hasSrc) {
         $st = Get-Content -LiteralPath $src -Raw -Encoding UTF8
         $m = [regex]::Match($st, 'https?://[^\s\)\]<>"]+')
         if ($m.Success) { $srcUrl = $m.Value }
-        # 是否如实声明了「无官方文档」
         $noOfficial = $st -match '无官方文档|无官方'
-    } else { $noOfficial = $false }
+    }
 
     $problems = @()
-    if (-not $hasSum) { $problems += '缺 summary.md' }
     if (-not $hasSrc) { $problems += '🔴 缺 source.md（不知道东西从哪来）' }
     elseif (-not $srcUrl -and -not $noOfficial) { $problems += '🔴 source.md 里没有 URL，也没声明「无官方文档」' }
     if (-not $hasRef) { $problems += '🔴 缺 refs/（很可能是凭记忆写的，不是抓来的）' }
     elseif (-not $hasRefContent) { $problems += '🔴 refs/ 是空的（同上）' }
+    if ($intruders.Count) {
+        $problems += "🔴 study/ 里混进了我们写的东西：$($intruders -join ' / ') —— 应移到 notes/<主题>/（study 只存原档）"
+    }
 
     $rel = $e.FullName
     if ($problems.Count -eq 0) {
         $ok++
         if (-not $Quiet) {
-            $lesMark = if (Test-Path -LiteralPath $les) { ' +lessons' } else { '' }
-            Write-Host ("  ✅ {0}  refs={1}{2}" -f $rel, $refFiles.Count, $lesMark)
+            $notes = Join-Path (Split-Path $e.FullName -Parent) '..\notes' | Resolve-Path -ErrorAction SilentlyContinue
+            $noteMark = if ($notes -and (Test-Path -LiteralPath (Join-Path $notes.Path $e.Name))) { ' +notes' } else { '' }
+            Write-Host ("  ✅ {0}  refs={1}{2}" -f $rel, $refFiles.Count, $noteMark)
         }
     } else {
         $bad++
@@ -139,8 +145,8 @@ if ($bad -eq 0) {
     Write-Host "  ── 怎么修 ──"
     Write-Host "     1. 先抓：把官方原文存进 refs/（web_fetch 抓下来，不要自己写）"
     Write-Host "     2. 写 source.md：真实 URL + 抓取时间 + 可信度 + 交叉验证记录"
-    Write-Host "     3. 再写 summary.md：从 refs/ 总结，每条带指向 refs 的指针"
-    Write-Host "     4. 自己的经验另放 lessons.md，不要混进 summary.md"
+    Write-Host "     3. 我们的总结与经验放 notes/<主题>/（summary.md + lessons.md）"
+    Write-Host "        🔴 study/ 只存原档 —— 混进去就分不清「官方说的」和「我以为的」了"
     Write-Host ""
     Write-Host "     🔴 自问：refs/ 里的东西是我从网上抓的，还是我自己写的？"
     Write-Host "        自己写的 → 这不是 study 条目，是笔记。"

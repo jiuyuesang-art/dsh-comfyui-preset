@@ -83,7 +83,7 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 |---|---|
 | **1 个预设** | `id: comfyui`，显示名【ComfyUI 创作模式】，roster 排位 `order: 5` |
 | **8 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检）· `comfyui-project-layout`（文件管理 + 生长式结构 + 资产表）· `art-reference`（参考检索）· **`study`（知识获取流程 —— 用到外部软件 / 模型时先查官方）** |
-| **14 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · skill-filesystem · tool-skill · compaction 组(3) · ask-user · todo · web · present |
+| **15 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · skill-filesystem · tool-skill · compaction 组(3) · ask-user · todo · web · present |
 | **6 个工具脚本** | `verify-preset`（自检）· `pack-preset`（打包）· `run-python`（编码安全的 Python）· **`wait-job`（真推送等待）** · `check-encoding` · `asar-modules` |
 
 ### 技术要点：MoE 式稀疏加载
@@ -120,14 +120,50 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 | **③ 官方优先，但不定死官方** | 官方是**默认第一站**；**用户提出要社区方案就用社区的**；官方解决不了 / 没写 / 在本机行不通 → **社区是正当选项**。官方须**交叉验证确认是官方** · 学**方法思路**不照抄参数 · 社区须**标明来源 + 记可信度 + 实测验证** · 🔴 **官方 ≠ 无风险**，无论来源都过风险管控 |
 | **④ 无官方（创造性领域）** | 🔴 **先出一版，别卡在选参考上** —— 找参考 → **直接做一版交付** → 满意就完事；**用户要改时才**把"参考了什么、为什么这么选"摆出来让他确认。交付时**标明参考级别**（大师 / 经典 / 权威 / 普通） |
 | **⑤ 查不到** | 🔴 **停下给三选一**：跳过（标注未经官方确认）/ 你提供文档 / 改善网络后重试 |
-| **⑥ 落盘** | `summary.md`（**上限 2000 tokens，无下限，带原文指针**）+ `source.md` + `refs/` + `lessons.md` |
-| **⑦ 用户示范 → 学成手册** | 🔴 **反复修不对（≥2 轮）就停下请用户示范** → 对比改前改后 → **追问「为什么这样对」** → 落盘 `lessons.md` → 用新规则重做一次验证 |
+| **⑥ 落盘** | 原档 → `study/<主题>/`（`source.md` + `refs/`）；我们的 → `notes/<主题>/`（`summary.md` + `lessons.md`） |
+| **⑦ 用户示范 → 学成手册** | 🔴 **反复修不对（≥2 轮）就停下请用户示范** → 对比改前改后 → **追问「为什么这样对」** → 落盘 `notes/<主题>/lessons.md` → 用新规则重做一次验证 |
 
 **🔴 `refs/` 必须放原始全文，一字不删、不得再精炼** ——
 摘要的价值在**快**，原文的价值在**全**，两者不可互相替代。
 **精炼了原文，就等于既没有快的、也没有全的**（拆成多文件可以，删段落不行）。
 
 **两级缓存**：通用知识 → `02_env/study/<主题>/`；项目特有 → `01_projects/<项目>/study/<主题>/`
+
+> 🔴 **`study/` 只存原档** —— 里面每一个字都应该是**从外面抓来的**。
+> 我们的**总结**（`summary.md`）和**经验**（`lessons.md`）放 **`notes/<主题>/`**。
+> **混在一起，你就再也分不清哪句是官方的、哪句是模型编的** —— 而那正是这套机制存在的理由。
+
+### 🔴 技术要点：`study` 前置门（**真拦截，不只是规则**）
+
+**规则靠自觉是不够的** —— 实测事故：用户清空 `study/` 后让它用 ComfyUI + Qwen 2.1，
+它**加载了手册、也知道该往 `study/` 放**，却**跳过了「去抓」这一步**，直接凭记忆写了一份说明。
+**没有报错、没有失败、一切看起来正常** —— 它自己觉得完成了。
+
+所以加了一道**机械的**门（`plugin/study-gate.js`）：
+
+```
+调用任何 mcp__* 工具
+      ↓
+study/<主题>/ 有合规原档吗？（source.md 含真 URL + refs/ 非空）
+      ├─ 有   → 放行，本会话不再问
+      └─ 没有 → 🔴 拒绝，并给出可执行的出路
+```
+
+**为什么拦 MCP**：网页操作 / 电脑控制 / 软件控制**全都要经过 MCP** ——
+拦 `mcp__*` 就等于拦住了所有外部操作。
+
+**挂载点**：DSH 的 `tools/pre-execute` 事件（waterfall，dispatch 之前，可 allow/deny/cancel/ask）。
+
+| 纪律 | 做法 |
+|---|---|
+| **fail-safe** | 任何异常一律放行；找不到工作根也放行 —— **宁可漏拦，不可误伤** |
+| **不锁死** | 拒绝信息里给三条出路（去抓 / 问用户 / **写豁免文件**），不会卡住 |
+| **学习通道不受影响** | `web_fetch` / `web_search` **不是** `mcp__*` → **永不被拦**，agent 能去查、能落盘、能再回来 |
+
+**临时关掉整个门**：`cordis.patch.yml` 里把 `study-gate` 那行的 `enabled` 改成 `false`。
+
+> ⚠️ `workRoots` 是**本机路径**，换机器要改；路径不存在时插件会**自动放行**（不会误伤）。
+> 离线干跑测试：19 项，含各种畸形输入与 fail-safe 分支。
 
 ```
 02_env/study/<主题>/
@@ -239,7 +275,7 @@ MCP 是同步模型，`comfy-mcp` 不推进度。**让模型反复去问是最�
 ```
 dsh-comfyui-preset/
 ├─ package.json          # bundle 声明（dsh.bundle.patch 指向补丁层）
-├─ cordis.patch.yml      # ★ 主体：1 行 preset 声明 + 14 行插件
+├─ cordis.patch.yml      # ★ 主体：1 行 preset 声明 + 15 行插件
 ├─ skills/               # ★ 8 个专家手册（每个是一个带 SKILL.md 的目录）
 ├─ tools/                # 6 个工具脚本
 ├─ README.md
