@@ -162,8 +162,12 @@ study/<主题>/ 有合规原档吗？（source.md 含真 URL + refs/ 非空）
 
 **临时关掉整个门**：`cordis.patch.yml` 里把 `study-gate` 那行的 `enabled` 改成 `false`。
 
+> ⚠️ 插件行用**裸包名 + 子路径**（`dsh-comfyui-preset/plugin/study-gate.js`），**不能用 `./plugin/...`**
+> —— bundle 作用域的 `baseUrl` 可能是裸路径，加载器的 `new URL(name, baseUrl)` 会抛异常，
+> 表现为预设显示「加载失败：never started」。详见 `cordis.patch.yml` 里那一行的注释。
+>
 > ⚠️ `workRoots` 是**本机路径**，换机器要改；路径不存在时插件会**自动放行**（不会误伤）。
-> 离线干跑测试：19 项，含各种畸形输入与 fail-safe 分支。
+> 离线干跑测试 **35 项**，含各种畸形输入、fail-safe 分支、两阶段检查与注入行为。
 
 ```
 02_env/study/<主题>/
