@@ -311,6 +311,11 @@
               allowServers: []
               # 原档有了还要求有总结吗？（默认 true）—— 没总结就没法"按总结运行"
               requireSummary: true
+              # 🔴 放行后把总结的**关键点直接注入上下文**（默认 true）
+              #    目的：让它真的看到该看的，而不是补完文件、然后照旧凭感觉干。
+              #    每个(会话,server)只注入一次，不会每次调用都灌。
+              injectSummary: true
+              summaryMaxChars: 2500
               workRoots:
                 - 'H:/作品/AI/ART5'
               oncePerSession: false   # 默认每次都查；改 true 会变钝（放行后整个进程不再检查，清空 study/ 也不会重拦）

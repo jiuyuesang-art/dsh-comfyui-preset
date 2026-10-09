@@ -53,6 +53,16 @@ export const DEFAULTS = {
   //    所以缺总结也拦一次，让它先写出来（成本很低，收益是以后每次都快）。
   //    改成 false 则只要求原档。
   requireSummary: true,
+  // 🔴 放行后，把总结的**关键点**直接注入上下文（默认 true）。
+  //
+  //    用户的目的：「让模型更积极地学习」。拦只是第一步 ——
+  //    拦完还得让它真的看到该看的东西，否则它只会补完文件、然后照旧凭感觉干。
+  //    与其让它自己去翻，不如**直接给它**（这是效率上的划算买卖）。
+  //
+  //    只注入一次/会话/server，不会每次调用都灌。
+  injectSummary: true,
+  // 注入内容的上限（字符）。摘要本身已限 2000 tokens，这里再兜一层。
+  summaryMaxChars: 2500,
   // 🔴 默认 false = **每次都查**。
   //
   //    早先默认 true（放行后记住），但那有两个缺陷：
@@ -128,6 +138,54 @@ function archiveIsCompliant(studyEntry) {
 /** notes/<主题>/summary.md 存在吗？（我们的总结 —— 与档案分开存） */
 function summaryExists(root, topic) {
   return safe(() => fs.existsSync(path.join(root, '02_env', 'notes', topic, 'summary.md')), false)
+}
+
+/** notes/<主题>/summary.md 的路径；不存在返回 null */
+function summaryPath(root, topic) {
+  const p = path.join(root, '02_env', 'notes', topic, 'summary.md')
+  return safe(() => (fs.existsSync(p) ? p : null), null)
+}
+
+/**
+ * 从 summary.md 里取「关键结论」段（没有该小节就取开头），并限长。
+ * 目的：把最该看的那部分直接塞进上下文，省掉模型自己去翻的开销。
+ */
+export function extractKeyPoints(md, maxChars) {
+  let body = String(md || '')
+  // 去掉一级标题（那只是文件名），保留内容
+  const sec = body.match(/##\s*关键结论[^\n]*\n([\s\S]*?)(?=\n##\s|\s*$)/)
+  if (sec) body = sec[1].trim()
+  else body = body.replace(/^#.*\n/, '').trim()
+
+  if (body.length <= maxChars) return body
+  // 截断时尽量切在行边界，并明确标注被截断
+  const cut = body.lastIndexOf('\n', maxChars)
+  return body.slice(0, cut > maxChars * 0.6 ? cut : maxChars).trimEnd() + '\n\n…（关键点已截断，完整见 summary.md）'
+}
+
+/** 生成要注入的 text block；不需要注入时返回 null */
+function buildInjection(exec, cfg, root, topic) {
+  const sp = summaryPath(root, topic)
+  if (!sp) return null
+  const md = safe(() => fs.readFileSync(sp, 'utf8'), '')
+  if (!md.trim()) return null
+  const key = extractKeyPoints(md, cfg.summaryMaxChars)
+
+  const rel = path.join('02_env', 'notes', topic, 'summary.md')
+  const refs = path.join('02_env', 'study', topic, 'refs')
+  const text = [
+    `📚 **${topic} 的要点已给你**（不用再去翻总结）：`,
+    '',
+    '────────────────────────────────',
+    key,
+    '────────────────────────────────',
+    '',
+    `· 完整总结：\`${rel}\`　· 官方原档：\`${refs}\``,
+    '· 🔵 如果按这些要点跑**不通** → 去翻上面的 `refs/` **完整文档**找原因（原档一字未删就是为了这个），',
+    '  再不行 → **问社区**（见 study 手册 §3.5）。',
+  ].join('\n')
+
+  return { type: 'text', text }
 }
 
 function buildDenyReason(kind, server, topic, roots) {
@@ -227,6 +285,7 @@ export function apply(ctx, config) {
     if (!cfg.enabled) return
 
     const passed = new Set()
+    const injected = new Set()
 
     ctx.on('tools/pre-execute', async (exec, next) => {
       try {
@@ -236,6 +295,50 @@ export function apply(ctx, config) {
         // 任何异常 → 放行。宁可漏拦，不可误伤。
       }
       return next()
+    })
+
+    // ── 注入：把总结的关键点直接塞进上下文 ──────────────────────────────
+    //
+    // 用户的目的：「让模型更积极地学习」。拦只是第一步 ——
+    // 拦完还得让它真的**看到**该看的东西，否则它只会去补文件、然后照旧凭感觉干。
+    //
+    // 通道：PostToolDecision.content（ContentBlock[]）。实测形状就是 { type:'text', text }
+    //      —— 不依赖任何模块（@deepseek-ai/dsh-llm 在 profile 里不可解析，用不了它的 createUserMessage）。
+    //
+    // 「有条件」：每个 (会话, server) **只注入一次**，之后不再重复塞（否则每次调用都灌一遍会撑爆上下文）。
+    ctx.on('tools/post-execute', async (exec, result, next) => {
+      const decision = await next()   // 🔴 next 只能调一次，先拿到原始决策，再决定要不要加料
+      try {
+        if (!cfg.injectSummary) return decision
+        const toolName = String(exec?.name || '')
+        if (!toolName.startsWith('mcp__')) return decision
+        const parts = toolName.split('__')
+        if (parts.length < 3) return decision
+        const server = parts[1]
+        if (Array.isArray(cfg.allowServers) && cfg.allowServers.includes(server)) return decision
+        const topic = cfg.servers?.[server] || (cfg.unknownServer === 'gate' ? server : null)
+        if (!topic) return decision
+
+        const ikey = `${exec?.agent?.id ?? '?'}|${server}`
+        if (injected.has(ikey)) return decision
+        injected.add(ikey)
+
+        // 门禁刚放行说明文件齐；再确认一次，并在多个工作根里选命中的那个
+        let block = null
+        for (const root of resolveWorkRoots(cfg)) {
+          const b = buildInjection(exec, cfg, root, topic)
+          if (b) { block = b; break }
+        }
+        if (!block) return decision
+
+        if (decision?.kind === 'accept') {
+          const base = decision.content ?? (decision.value === undefined ? result?.content : undefined)
+          if (Array.isArray(base)) return { ...decision, content: [...base, block] }
+        }
+      } catch {
+        // 注入失败 → 原样返回，绝不因为加料而破坏工具结果
+      }
+      return decision
     })
   } catch {
     // 挂载失败 → 静默失效，不影响其它插件
