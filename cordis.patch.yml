@@ -297,7 +297,23 @@
           # ⚠️ workRoots 是本机路径，换机器要改；不存在时插件会**自动放行**（不会误伤）。
           # 想临时关掉整个门：把 enabled 改成 false。
           - id: study-gate
-            name: './plugin/study-gate.js'
+            # 🔴 必须用「裸包名 + 子路径」，**不能用 ./plugin/xxx.js**（实测踩坑）。
+            #
+            #    写成 './plugin/study-gate.js' 时预设显示：
+            #      study-gate (./plugin/study-gate.js): never started
+            #
+            #    原因：加载器 cordis-plugin-loader/lib/index.js:219-221 —— 相对名走
+            #      new URL(name, this.ctx.baseUrl).href
+            #    而 bundle 作用域的 **baseUrl 可能是裸路径（非 URL）**，new URL() 直接抛
+            #    → import 失败 → 该条目拿不到 fiber → 报 "never started"
+            #    （dsh-agent-preset-registry/lib/index.js:204 判的就是 fiber === undefined）
+            #
+            #    裸包名走另一条分支（L223-226，直接 import(name)），从 profile 解析。
+            #    已实测：createRequire(<profile>/package.json).resolve(
+            #      'dsh-comfyui-preset/plugin/study-gate.js') → 解析成功（本包无 exports，子路径可用）。
+            #
+            #    ⚠️ 若改了 package.json 的 name，这里要同步改。
+            name: 'dsh-comfyui-preset/plugin/study-gate.js'
             config:
               enabled: true
               # 名字和主题对不上的才要列；名字就是主题的（如 blender）不用列
