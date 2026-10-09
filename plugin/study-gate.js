@@ -46,6 +46,13 @@ export const DEFAULTS = {
   allowServers: [],
   // 工作根候选（含 00_assets / 01_projects / 02_env 的那层）。空 = 从 cwd 向上探测。
   workRoots: [],
+  // 🔴 原档有了，还要求有总结吗？（默认 true）
+  //
+  //    用户描述的流程是「有原档 → **先看有没有总结** → 按总结的方法运行」。
+  //    没有总结就没法"按总结运行" —— 只能重读原档，那正是要避免的开销。
+  //    所以缺总结也拦一次，让它先写出来（成本很低，收益是以后每次都快）。
+  //    改成 false 则只要求原档。
+  requireSummary: true,
   // 🔴 默认 false = **每次都查**。
   //
   //    早先默认 true（放行后记住），但那有两个缺陷：
@@ -95,13 +102,11 @@ function resolveWorkRoots(cfg) {
   return out
 }
 
-/** 这个 study 条目合规吗？（source.md 有 URL 或声明无官方 + refs/ 非空） */
-function entryIsCompliant(entryDir) {
-  const sum = path.join(entryDir, 'summary.md')
-  const src = path.join(entryDir, 'source.md')
-  const refs = path.join(entryDir, 'refs')
+/** study/<主题>/ 是合规的**原档**吗？（source.md 有 URL 或声明无官方 + refs/ 非空） */
+function archiveIsCompliant(studyEntry) {
+  const src = path.join(studyEntry, 'source.md')
+  const refs = path.join(studyEntry, 'refs')
 
-  // 用户的新规则：study 只存原档 —— 但兼容早期含 summary.md 的条目
   if (!fs.existsSync(src)) return false
 
   const st = safe(() => fs.readFileSync(src, 'utf8'), '')
@@ -120,18 +125,45 @@ function entryIsCompliant(entryDir) {
   return n > 0
 }
 
-function buildDenyReason(server, topic, roots) {
-  const where = roots.length
+/** notes/<主题>/summary.md 存在吗？（我们的总结 —— 与档案分开存） */
+function summaryExists(root, topic) {
+  return safe(() => fs.existsSync(path.join(root, '02_env', 'notes', topic, 'summary.md')), false)
+}
+
+function buildDenyReason(kind, server, topic, roots) {
+  const studyWhere = roots.length
     ? roots.map((r) => path.join(r, '02_env', 'study', topic)).join('\n    或 ')
     : '<工作根>/02_env/study/' + topic
+  const notesWhere = roots.length
+    ? roots.map((r) => path.join(r, '02_env', 'notes', topic)).join('\n    或 ')
+    : '<工作根>/02_env/notes/' + topic
+
+  if (kind === 'no-summary') {
+    // 原档有了，但还没写总结 —— 没有总结就无法"按总结运行"
+    return [
+      `🔴 study 前置门：「${topic}」的原档已有，但**还没写总结**，所以无法"按总结运行"。`,
+      '',
+      `  去读原档，写出总结：${notesWhere}\\summary.md`,
+      `    原档在：${studyWhere}`,
+      '    总结要点（🔴 不设长度下限，**上限 2000 tokens**，每条带指向 refs/ 的指针）：',
+      '      · 官方怎么说（参数 / 步骤 / 限制）',
+      '      · 与本机的关系（版本、显存、量化差异 —— 官方示例不一定适用）',
+      '      · 还没搞清的（写清楚，别猜）',
+      '',
+      '  然后重试。总结是给"下次直接用"的 —— 没有它，每次都要重读原档。',
+      '  （本次确实不需要，比如只查状态 → 在 02_env/study/' + DEFAULTS.exemptPrefix + server + ' 写一行理由）',
+    ].join('\n')
+  }
+
+  // kind === 'no-archive'：连原档都没有
   return [
     `🔴 study 前置门：你还没学过「${topic}」，但正在调用 mcp__${server}__*。`,
     '',
     '动手之前先走 study 流程（这是前置步骤，不是事后记录）：',
-    `  ① web_fetch 官方文档 → 原档落盘到 ${where}`,
+    `  ① web_fetch 官方文档 → 原档落盘到 ${studyWhere}`,
     '     🔴 study/ 只存原档，必须两样：source.md（真实 URL + 抓取时间）+ refs/（抓下来的原文）',
     '     🔴 自问：refs/ 里是我从网上抓的，还是我自己脑子里写的？自己写的 → 停下，去抓。',
-    '  ② 我们的总结与经验放 notes/<主题>/（summary.md + lessons.md）—— 不要混进 study/',
+    `  ② 再写总结 → ${notesWhere}\\summary.md（我们的总结与经验放 notes/，不要混进 study/）`,
     '  ③ 官方不可达 → 停下问用户三选一（跳过 / 你提供文档 / 改善网络后重试）',
     `  ④ 本次确实不需要（非承重，比如只查个状态）→ 在 02_env/study/${DEFAULTS.exemptPrefix}${server} 里写一行理由，然后重试`,
     '',
@@ -164,19 +196,26 @@ export function evaluate(exec, cfg, passed) {
   const roots = resolveWorkRoots(cfg)
   if (!roots.length) return null // 找不到工作根 → 不拦（fail-safe）
 
+  // 遍历工作根：原档 + 总结都对上才算过。
+  // 记住"最轻的缺口" —— 原档有了只差总结，比两者都缺更接近完成，报那个更有用。
+  let sawArchive = false
   for (const root of roots) {
     const studyDir = path.join(root, '02_env', 'study')
     if (fs.existsSync(path.join(studyDir, `${cfg.exemptPrefix}${server}`))) {
       passed.add(key)
       return null
     }
-    if (entryIsCompliant(path.join(studyDir, topic))) {
-      passed.add(key)
-      return null
-    }
+    if (!archiveIsCompliant(path.join(studyDir, topic))) continue
+    sawArchive = true
+    if (cfg.requireSummary && !summaryExists(root, topic)) continue
+    passed.add(key)
+    return null
   }
 
-  return { kind: 'deny', reason: buildDenyReason(server, topic, roots) }
+  return {
+    kind: 'deny',
+    reason: buildDenyReason(sawArchive ? 'no-summary' : 'no-archive', server, topic, roots),
+  }
 }
 
 // ── 挂载 ─────────────────────────────────────────────────────────────────

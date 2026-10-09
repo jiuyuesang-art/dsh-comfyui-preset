@@ -309,6 +309,8 @@
               unknownServer: gate
               # 本身就是「去取信息」的 MCP 可加到这里豁免（拦它们等于让 agent 没法学习）
               allowServers: []
+              # 原档有了还要求有总结吗？（默认 true）—— 没总结就没法"按总结运行"
+              requireSummary: true
               workRoots:
                 - 'H:/作品/AI/ART5'
               oncePerSession: false   # 默认每次都查；改 true 会变钝（放行后整个进程不再检查，清空 study/ 也不会重拦）
