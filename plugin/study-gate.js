@@ -25,13 +25,25 @@ export const name = 'study-gate'
 // 事件签名是 'tools/pre-execute'(this: Scoped<ToolRuntime>, ...)
 export const inject = ['tools']
 
-const DEFAULTS = {
+export const DEFAULTS = {
   enabled: true,
-  // MCP server 名（mcp__<server>__<tool> 的中间段）→ study 主题名
+  // MCP server 名（mcp__<server>__<tool> 的中间段）→ study 主题名。
+  // 这里只列"名字和主题对不上"的；名字就是主题的（如 blender）不用列。
   servers: {
     comfymcp: 'comfyui',
     wincu: 'windows-computer-use',
   },
+  // 🔴 没在 servers 里、也不在 allowServers 里的 MCP server 怎么办？
+  //    'gate'  = 也拦（默认）—— 主题名就用 server 名，如 mcp__blender__* → study/blender/
+  //    'allow' = 放行
+  //
+  //    为什么默认 'gate'：本模式的立场是「用任何外部软件之前先学」。
+  //    原来只认硬编码白名单，结果是**新装的 MCP 默认不受管** —— 与立场矛盾。
+  //    用户实测就撞上了：装了 blender MCP，但它不在名单里，门禁形同虚设。
+  unknownServer: 'gate',
+  // 明确豁免的 server（放行、不要求 study）。
+  // 用于那些「本身就是去取信息的」MCP —— 拦它们等于让 agent 没法学习。
+  allowServers: [],
   // 工作根候选（含 00_assets / 01_projects / 02_env 的那层）。空 = 从 cwd 向上探测。
   workRoots: [],
   // 🔴 默认 false = **每次都查**。
@@ -137,7 +149,13 @@ export function evaluate(exec, cfg, passed) {
   const parts = toolName.split('__')
   if (parts.length < 3) return null
   const server = parts[1]
-  const topic = cfg.servers?.[server]
+
+  // 明确豁免的 server → 放行
+  if (Array.isArray(cfg.allowServers) && cfg.allowServers.includes(server)) return null
+
+  // 主题名：优先查映射表；没映射就按 unknownServer 决定（默认也拦，主题名 = server 名）
+  const mapped = cfg.servers?.[server]
+  const topic = mapped || (cfg.unknownServer === 'gate' ? server : null)
   if (!topic) return null
 
   const key = `${exec?.agent?.id ?? '?'}|${server}`

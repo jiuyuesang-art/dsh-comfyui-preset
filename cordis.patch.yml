@@ -300,9 +300,15 @@
             name: './plugin/study-gate.js'
             config:
               enabled: true
+              # 名字和主题对不上的才要列；名字就是主题的（如 blender）不用列
               servers:
                 comfymcp: comfyui
                 wincu: windows-computer-use
+              # 🔴 没列在上面的 MCP 也拦（主题名 = server 名）——
+              #    新装的 MCP 不会漏网。改成 allow 就只拦 servers 里列出的。
+              unknownServer: gate
+              # 本身就是「去取信息」的 MCP 可加到这里豁免（拦它们等于让 agent 没法学习）
+              allowServers: []
               workRoots:
                 - 'H:/作品/AI/ART5'
               oncePerSession: false   # 默认每次都查；改 true 会变钝（放行后整个进程不再检查，清空 study/ 也不会重拦）
