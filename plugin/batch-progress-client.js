@@ -11,7 +11,7 @@
  */
 
 window.__ModuleLoader__.load({
-    id: 'comfy-batch-progress',
+    id: 'dsh-comfyui-preset',
     factory(require) {
         const React = require('react')
         const { useEffect, useRef, useState } = React
@@ -199,7 +199,7 @@ window.__ModuleLoader__.load({
                 ctx.slots.inject('shell.overlay', () =>
                     ctx.slots.register(
                         { name: 'shell.overlay', id: 'comfy-batch-progress', order: 120, label: '批量渲染进度' },
-                        () => React.createElement(BatchCard),
+                        BatchCard,
                     ))
             },
         }

@@ -76,6 +76,44 @@ r = readActive({ pointer: ptr })
 if (r.active === null && r.reason === 'bad-pointer') ok('指针缺 statePath → bad-pointer')
 else no('指针缺 statePath → bad-pointer', JSON.stringify(r))
 
+// ── 接线检查（静态）：这几条错一条，卡片就永远不出现 ──────────────────────
+import { readFileSync, existsSync } from 'node:fs'
+import { dirname, join as pjoin, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const pkgPath = resolve(here, '..', 'package.json')
+const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'))
+const clientEntry = pkg?.exports?.['./client']
+
+// A. package.json 必须声明 dsh.client.platform = web（否则 Host 半根本不扫描）
+if (pkg?.dsh?.client?.platform === 'web') ok('package.json 声明 dsh.client.platform=web')
+else no('package.json 声明 dsh.client.platform=web', JSON.stringify(pkg?.dsh?.client))
+
+// B. exports["./client"] 必须指向真实存在的文件
+if (typeof clientEntry === 'string' && existsSync(resolve(here, '..', clientEntry))) {
+    ok('exports["./client"] 指向存在的文件')
+} else {
+    no('exports["./client"] 指向存在的文件', String(clientEntry))
+}
+
+// C. 🔴 client 里的 factory id 必须**等于包名** ——
+//    写错的话 Host 侧扫描到行、浏览器侧却永远等不到同 id 的 factory，
+//    表现就是「路由有、卡片没有」，且没有任何报错。这是本插件真踩过的坑。
+const clientSrc = readFileSync(resolve(here, '..', clientEntry), 'utf8')
+const idMatch = clientSrc.match(/__ModuleLoader__\.load\(\{\s*id:\s*['"]([^'"]+)['"]/)
+if (idMatch && idMatch[1] === pkg.name) ok('client factory id 等于包名（' + pkg.name + '）')
+else no('client factory id 等于包名', 'factory id=' + (idMatch ? idMatch[1] : '(未找到)') + ' / 包名=' + pkg.name)
+
+// D. shell.overlay 属于 ui-slots/ui-layout 两个包，inject 里必须允许它们
+const injectList = pkg?.dsh?.client?.inject ?? []
+const needInject = ['@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-ui-layout']
+if (needInject.every((m) => injectList.includes(m))) ok('dsh.client.inject 含 ui-slots 与 ui-layout')
+else no('dsh.client.inject 含 ui-slots 与 ui-layout', JSON.stringify(injectList))
+
+// E. 注册的槽位必须是 shell.overlay（改了槽位要同步改这里）
+if (/name:\s*['"]shell\.overlay['"]/.test(clientSrc)) ok('注册到的槽位是 shell.overlay')
+else no('注册到的槽位是 shell.overlay', '(未匹配到)')
 rmSync(dir, { recursive: true, force: true })
 
 console.log('')
