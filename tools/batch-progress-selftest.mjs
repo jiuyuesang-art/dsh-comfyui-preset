@@ -105,6 +105,11 @@ const idMatch = clientSrc.match(/__ModuleLoader__\.load\(\{\s*id:\s*['"]([^'"]+)
 if (idMatch && idMatch[1] === pkg.name) ok('client factory id 等于包名（' + pkg.name + '）')
 else no('client factory id 等于包名', 'factory id=' + (idMatch ? idMatch[1] : '(未找到)') + ' / 包名=' + pkg.name)
 
+// C2. 宿主靠「包根」把 Loader 行映射到包，才能读到 dsh.client ——
+//     缺 main 或缺 "." 导出时，某些环境会静默跳过整个包的 client 半（本插件真踩过）。
+const rootExport = pkg?.exports?.['.']
+if (typeof pkg?.main === 'string' && typeof rootExport === 'string') ok('package.json 有 main 与 "." 导出')
+else no('package.json 有 main 与 "." 导出', 'main=' + pkg?.main + ' / exports["."]=' + rootExport)
 // D. shell.overlay 属于 ui-slots/ui-layout 两个包，inject 里必须允许它们
 const injectList = pkg?.dsh?.client?.inject ?? []
 const needInject = ['@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-ui-layout']
