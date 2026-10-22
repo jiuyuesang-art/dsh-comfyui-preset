@@ -102,8 +102,18 @@ param(
 
     [switch]$NoFree,
     [int]$FreeWaitSeconds = 25,
+
+    # 每项之间是否**重启 ComfyUI**（换进程，显存回到初始值）
+    [switch]$RestartEach,
+    [switch]$NoRestart,
     [string]$RestartCommand,
     [int]$RestartWaitSeconds = 180,
+
+    # 桌面状态栏（默认开；读状态文件，不参与渲染。-NoProgressWindow 关掉）
+    [switch]$NoProgressWindow,
+
+    # 单项也允许走批量（默认拒绝：单项该走单任务流程）
+    [switch]$AllowSingle,
 
     [switch]$StopOnError,
     [switch]$DryRun,
@@ -147,6 +157,62 @@ $baseWorkflowText = Get-Content $baseWorkflowPath -Raw -Encoding UTF8
 
 $freeBetween = -not $NoFree
 if ($plan.freeBetween -eq $false) { $freeBetween = $false }
+
+# ── 每项之间怎么复位显存 ───────────────────────────────────────────────────
+# 默认：**重启 ComfyUI**（换进程，显存真正回到初始值，主模型能整块吃下显存）。
+# 显式 -RestartEach 或 -RestartCommand 也算开；-NoRestart 改回只 /free。
+$restartScript = Join-Path $PSScriptRoot 'comfy-restart.ps1'
+$restartMode = $false
+if ($NoRestart) {
+    $restartMode = $false
+} elseif ($RestartCommand -or $RestartEach) {
+    $restartMode = $true
+} elseif (Test-Path $restartScript) {
+    $restartMode = $true        # 默认开：有重启器就用
+}
+if ($restartMode -and $RestartCommand) { $freeBetween = $false }   # 重启本身就是最强清理
+
+# ── 进度状态（给桌面状态栏读，不占上下文）──────────────────────────────────
+$progressPath = [IO.Path]::ChangeExtension($PlanPath, '.progress.json')
+$progress = [ordered]@{
+    plan         = $PlanPath
+    total        = 0
+    done         = 0
+    ok           = 0
+    failed       = 0
+    currentIndex = 0
+    current      = $null
+    phase        = 'starting'
+    statusText   = '准备中'
+    startedAt    = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
+    totalSeconds = 0
+}
+
+function Save-Progress {
+    try {
+        $progress['totalSeconds'] = [math]::Round(([Diagnostics.Stopwatch]::GetTimestamp() - $script:startTs) / [Diagnostics.Stopwatch]::Frequency, 1)
+    } catch { }
+    try {
+        $json = $progress | ConvertTo-Json -Depth 5 -Compress
+        $tmp = "$progressPath.tmp"
+        [IO.File]::WriteAllText($tmp, $json, (New-Object Text.UTF8Encoding $false))
+        Move-Item $tmp $progressPath -Force
+    } catch { }
+}
+$script:startTs = [Diagnostics.Stopwatch]::GetTimestamp()
+
+$progressWindowProc = $null
+function Start-ProgressWindow {
+    if ($NoProgressWindow) { return }
+    $pw = Join-Path $PSScriptRoot 'progress-window.ps1'
+    if (-not (Test-Path $pw)) { return }
+    try {
+        # 用 cmd /c start /b 脱离本进程树 —— 否则批次结束时作业被清理，状态窗会一起消失，
+        # 「全部完成 12/12」这个最终画面你就看不到了。
+        $inner = "pwsh -STA -NoProfile -ExecutionPolicy Bypass -File `"$pw`" -StatePath `"$progressPath`""
+        Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', "start `"`" /b $inner") -WindowStyle Hidden | Out-Null
+    } catch { }
+}
 
 # ── 工具函数 ──────────────────────────────────────────────────────────────
 function Get-VramFree {
@@ -277,23 +343,35 @@ function Reset-Vram {
 }
 
 function Restart-Comfy {
-    Say "   🔄 重启 ComfyUI：$RestartCommand"
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    try {
+    $progress['phase'] = 'restarting'
+    $progress['statusText'] = '重启 ComfyUI'
+    Save-Progress
+
+    if ($RestartCommand) {
+        Say "   🔄 重启 ComfyUI（自定义命令）：$RestartCommand"
         & pwsh -NoProfile -Command $RestartCommand | Out-Null
-    } catch {
-        Fail "重启命令执行失败：$($_.Exception.Message)" 3
+        if ($LASTEXITCODE -ne 0) { throw "自定义重启命令退出码 $LASTEXITCODE" }
+    } else {
+        Say "   🔄 重启 ComfyUI（换进程，显存回到初始值）…"
+        $out = & pwsh -NoProfile -File $restartScript -Port $Port -WaitSeconds $RestartWaitSeconds -Quiet 2>&1
+        $code = $LASTEXITCODE
+        if ($code -ne 0) {
+            $tail = @($out | Where-Object { $_ -is [string] } | Select-Object -Last 2) -join ' / '
+            throw "comfy-restart 失败（exit $code）：$tail"
+        }
     }
+
+    # 等 /system_stats 真的可用（自定义命令走这条；内置脚本已在内部等过）
     $deadline = (Get-Date).AddSeconds($RestartWaitSeconds)
     while ((Get-Date) -lt $deadline) {
-        Start-Sleep -Milliseconds 900
-        try {
-            Invoke-RestMethod "$base/system_stats" -TimeoutSec 3 | Out-Null
-            Say ("   ✅ 服务已回来（{0:N1}s，命令自身 {1:N1}s）" -f $sw.Elapsed.TotalSeconds, $sw.Elapsed.TotalSeconds)
+        if (Get-VramFree) {
+            Say ("   ✅ ComfyUI 已就绪（{0:N1}s），可用显存 {1:N1} GB" -f $sw.Elapsed.TotalSeconds, ((Get-VramFree) / 1GB))
             return
-        } catch { }
+        }
+        Start-Sleep -Milliseconds 700
     }
-    Fail "重启后 ${RestartWaitSeconds}s 内服务没回来" 3
+    throw "重启后 ${RestartWaitSeconds}s 内 /system_stats 仍不可用"
 }
 
 # ── 解析每项（DryRun 也用这一份逻辑，保证「验过的就是跑的」）────────────────
@@ -348,12 +426,24 @@ try {
     Fail "计划解析失败：$($_.Exception.Message)" 2
 }
 
+# 🔴 单项护栏：先报结构错误（地址/路径/查重），再报这条策略 —— 别把真错误盖住。
+#    一项就该走单任务流程（MCP 提交 + wait-job）：批量不会更省，还多一层进程和一个状态窗。
+if ($resolved.Count -eq 1 -and -not $AllowSingle) {
+    Fail "只有 1 项 —— 单项请走单任务流程（comfyui-mcp-ops + wait-job.ps1），不要用批量。确认要走请加 -AllowSingle" 2
+}
+
 # ── DryRun ────────────────────────────────────────────────────────────────
 if ($DryRun) {
     Write-Output "🧪 干跑：共 $($resolved.Count) 项，不提交"
     Write-Output "   基础工作流：$baseWorkflowPath"
-    Write-Output "   每项之间清显存：$(if ($freeBetween) { '是' } else { '否' })$(if ($RestartCommand) { '（并重启）' } else { '' })"
-    if (-not $OutDir) { Say "   产物：只记录文件名（未给 -OutDir）" } else { Say "   产物下载到：$OutDir" }
+    if ($restartMode) {
+        Write-Output ("   每项之间：重启 ComfyUI（{0}）" -f $(if ($RestartCommand) { '自定义命令' } else { 'comfy-restart.ps1 自动推断启动器' }))
+    } else {
+        Write-Output ("   每项之间清显存：{0}" -f $(if ($freeBetween) { '是（/free）' } else { '否' }))
+    }
+    Write-Output ("   桌面状态栏：{0}" -f $(if ($NoProgressWindow) { '关' } else { "开（$([IO.Path]::GetFileName($progressPath))）" }))
+    Write-Output ("   进度文件：{0}" -f $progressPath)
+    if (-not $OutDir) { Write-Output "   产物：只记录文件名（未给 -OutDir）" } else { Write-Output "   产物下载到：$OutDir" }
     foreach ($r in $resolved) {
         Write-Output ""
         Write-Output ("   [{0}/{1}] {2}" -f $r.index, $resolved.Count, $r.name)
@@ -375,12 +465,22 @@ if (-not (Test-Path $waitJob)) { Fail "找不到 wait-job.ps1（应与本脚本�
 if ($OutDir) { New-Item -ItemType Directory -Force -Path $OutDir | Out-Null }
 
 $total = $resolved.Count
-Say "🚀 批次开始：$total 项$(if ($freeBetween) { '，每项之间清显存' })"
+Say "🚀 批次开始：$total 项$(if ($restartMode) { '，每项之间重启 ComfyUI' } elseif ($freeBetween) { '，每项之间清显存' })"
 
 $batchSw = [Diagnostics.Stopwatch]::StartNew()
 $results = @()
 $ok = 0; $failCount = 0
 $aborted = $false
+
+# 进度：初始化 + 拉起状态栏（只读状态文件，不参与渲染）
+$progress['total'] = $total
+$progress['done'] = 0
+$progress['ok'] = 0
+$progress['failed'] = 0
+$progress['phase'] = 'running'
+$progress['statusText'] = '渲染中'
+Save-Progress
+Start-ProgressWindow
 
 for ($idx = 0; $idx -lt $total; $idx++) {
     $r = $resolved[$idx]
@@ -394,6 +494,12 @@ for ($idx = 0; $idx -lt $total; $idx++) {
     $clientId = [guid]::NewGuid().ToString()
     Say ""
     Say "▶ $label  提交中（工作流 $(Split-Path $r.workflow -Leaf)）"
+
+    $progress['current'] = $r.name
+    $progress['currentIndex'] = $idx + 1
+    $progress['phase'] = 'running'
+    $progress['statusText'] = '渲染中'
+    Save-Progress
 
     $promptId = $null
     $status = 'FAILED'
@@ -470,6 +576,12 @@ for ($idx = 0; $idx -lt $total; $idx++) {
     }
     Say ("   ⏱  {0}  ·  {1:N1}s  ·  累计 {2:N1}s" -f $status, $itemSw.Elapsed.TotalSeconds, $batchSw.Elapsed.TotalSeconds)
 
+    $progress['done'] = $idx + 1
+    $progress['ok'] = $ok
+    $progress['failed'] = $failCount
+    $progress['current'] = $null
+    Save-Progress
+
     if ($status -ne 'DONE' -and $StopOnError) {
         Say "   ⛔ -StopOnError：停止批次"
         $aborted = $true
@@ -478,9 +590,17 @@ for ($idx = 0; $idx -lt $total; $idx++) {
 
     # 最后一项之后不清理（没有下一项要用显存）
     if ($idx -lt $total - 1) {
-        if ($RestartCommand) {
-            try { Restart-Comfy } catch { $aborted = $true }
+        if ($restartMode) {
+            try { Restart-Comfy }
+            catch {
+                Say "   ⚠️ 重启失败：$($_.Exception.Message)"
+                Say "   → 退回 /free 继续（下一项可能显存偏紧）"
+                [void](Reset-Vram -Tag "清显存（重启失败兜底）")
+            }
         } elseif ($freeBetween) {
+            $progress['phase'] = 'freeing'
+            $progress['statusText'] = '清显存'
+            Save-Progress
             [void](Reset-Vram -Tag "清显存")
         }
     }
@@ -488,6 +608,17 @@ for ($idx = 0; $idx -lt $total; $idx++) {
 
 $batchSw.Stop()
 $totalSeconds = [math]::Round($batchSw.Elapsed.TotalSeconds, 1)
+
+# 终态写进进度（状态栏会显示最终结果并停在那里，方便你回看）
+if ($aborted) { $progress['phase'] = 'aborted' }
+elseif ($ok -eq $total) { $progress['phase'] = 'done' }
+elseif ($ok -gt 0) { $progress['phase'] = 'partial' }
+else { $progress['phase'] = 'failed' }
+$progress['done'] = [Math]::Min($total, $ok + $failCount)
+$progress['ok'] = $ok
+$progress['failed'] = $failCount
+$progress['current'] = $null
+Save-Progress
 
 # ── 报告 ──────────────────────────────────────────────────────────────────
 $reportPath = [IO.Path]::ChangeExtension($PlanPath, '.result.json')

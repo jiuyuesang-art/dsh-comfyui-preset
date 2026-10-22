@@ -116,7 +116,17 @@ $p8 = Join-Path $tmp 'p8.json'; Set-Content $p8 '{ this is not json' -Encoding u
 $r = RunDry $p8
 if ($r.code -eq 2 -and $r.text -match '不是合法 JSON') { Ok '非法 JSON → 退出 2' } else { No '非法 JSON → 退出 2' "code=$($r.code) $($r.text)" }
 
-# ── 9. 省略 name 自动命名 ───────────────────────────────────────────────
+# ── 9. 单项护栏：1 项直接拒绝（先报结构错误，再报策略）─────────────────────
+$p9a = WritePlan 'p9a.json' @{ workflow = 'wf.json'; items = @(@{ name = 'only' }) }
+$r = RunDry $p9a
+if ($r.code -eq 2 -and $r.text -match '只有 1 项') { Ok '单项护栏：1 项 → exit 2 并指路单任务流程' } else { No '单项护栏：1 项 → exit 2 并指路单任务流程' "code=$($r.code) $($r.text)" }
+
+$r = RunDry $p9a
+# 加 -AllowSingle 应放行
+$out2 = & pwsh -NoProfile -File $script -PlanPath $p9a -DryRun -Quiet -AllowSingle 2>&1
+if ($LASTEXITCODE -eq 0 -and ($out2 -join "`n") -match 'BATCH_DRYRUN\s+items=1') { Ok '单项护栏：-AllowSingle 可放行' } else { No '单项护栏：-AllowSingle 可放行' "code=$LASTEXITCODE" }
+
+# ── 10. 省略 name 自动命名 ──────────────────────────────────────────────
 $p9 = WritePlan 'p9.json' @{ workflow = 'wf.json'; items = @(@{}, @{}) }
 $r = RunDry $p9
 if ($r.code -eq 0 -and $r.text -match '\[1/2\] item1' -and $r.text -match '\[2/2\] item2') { Ok '省略 name → 自动 item1/item2' } else { No '省略 name → 自动 item1/item2' "code=$($r.code) $($r.text)" }

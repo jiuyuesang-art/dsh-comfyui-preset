@@ -82,9 +82,9 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 | | 内容 |
 |---|---|
 | **1 个预设** | `id: comfyui`，显示名【ComfyUI 创作模式】，roster 排位 `order: 5` |
-| **9 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检：**L0 事实 → L1 视觉 → L2 人**三级）· `comfyui-project-layout`（文件管理 + 生长式结构 + 资产表）· `art-reference`（参考检索）· **`study`（知识获取流程 —— 用到外部软件 / 模型时先查官方）** · **`comfyui-batch`（一次跑完 N 项：逐项提交/等待/清显存，只在最后唤醒一次）** |
+| **9 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检：**L0 事实 → L1 视觉 → L2 人**三级）· `comfyui-project-layout`（文件管理 + 生长式结构 + 资产表）· `art-reference`（参考检索）· **`study`（知识获取流程 —— 用到外部软件 / 模型时先查官方）** · **`comfyui-batch`（一次跑完 N 项：逐项提交/等待/每项重启复位显存，只在最后唤醒一次；带桌面状态栏）** |
 | **17 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · skill-filesystem · tool-skill · compaction 组(3) · **delegation 组（subagent / subagent_fork，可指定模型）** · ask-user · todo · web · present · **study-gate** · **review-gate** |
-| **9 个工具脚本** | `verify-preset`（自检）· `pack-preset`（打包）· `run-python`（编码安全的 Python）· **`wait-job`（真推送等待）** · **`batch-render`（批量渲染：一次跑完 N 项）** · `check-encoding` · `asar-modules` · **`review-gate-selftest`（审查门离线干跑 46 项）** · **`batch-selftest`（批量计划解析离线干跑 12 项）** |
+| **11 个工具脚本** | `verify-preset`（自检）· `pack-preset`（打包）· `run-python`（编码安全的 Python）· **`wait-job`（真推送等待）** · **`batch-render`（批量渲染：一次跑完 N 项）** · **`comfy-restart`（换进程复位显存）** · **`progress-window`（桌面状态栏）** · `check-encoding` · `asar-modules` · **`review-gate-selftest`（审查门离线干跑 46 项）** · **`batch-selftest`（批量计划解析离线干跑 14 项）** |
 
 ### 技术要点：MoE 式稀疏加载
 
@@ -307,14 +307,22 @@ MCP 是同步模型，`comfy-mcp` 不推进度。**让模型反复去问是最�
                             └─ 全部结束 → 写报告 → 退出 → DSH 唤醒模型（只醒这一次）
 ```
 
-**四项设计决定**：
+**五个设计决定**：
 
 | 决定 | 为什么 |
 |---|---|
 | **脚本自己提交**（HTTP `POST /prompt`），不走 MCP | MCP 逐项提交就是逐项唤醒；脚本自己提交才能「提交—等待—下一项」全在一个进程里完成 |
 | **每项仍交给 `wait-job.ps1`** | 等待机制一份实现，不为批量再写一套；每项一个子进程 = 单项崩溃不影响整批 |
-| **每项之间 `POST /free`**（可选重启进程） | 12GB 卡连续跑不同模型/分辨率会越跑越窄。实测每项之间 `4.2 → 10.7 GB` 可用 |
+| **每项之间重启 ComfyUI**（换进程） | `/free` 后显存回不到初始值（碎片 / CUDA 上下文 / 缓存分配器）。换进程才能让主模型**整块吃下显存**。实测重启后 `10.8 GB` 可用（12GB 卡），代价约 35–40 秒 |
+| **桌面状态栏** | `progress-window.ps1` 只读 `<计划名>.progress.json`，显示「已完成 / 总任务」+ 进度条；批次结束停住不回退。**不进模型上下文** |
 | **默认不中断** | 单项失败通常是个例（提示词被拒、某模型 OOM），不该毁掉整批。最后 `BATCH_PARTIAL` 汇总 |
+
+**两条护栏**（规则靠自觉不行，所以机械化）：
+
+- **单项拒绝**：`items` 只有 1 项时脚本直接 exit 2 —— 单项该走单任务流程（除非 `-AllowSingle`）。
+  「单镜头精修」属于迭代，反复看效果改参数，**不该进批次**。
+- **跑完前不产生 turn**：起 `run_in_background` 后模型必须结束本轮，persona 明令禁止
+  `job_output` 轮询与查队列。状态栏是给人看的，模型只在批次结束时被唤醒一次。
 
 **产物不再走 `fetch_outputs` 逐项搬运** —— 脚本用 `/view` 直接下载到 `-OutDir`（文件名前缀项名，不会撞）。
 **整个批次 0 次 MCP 调用**，模型被唤醒后只需读末行 +（需要细节时）报告 JSON。
