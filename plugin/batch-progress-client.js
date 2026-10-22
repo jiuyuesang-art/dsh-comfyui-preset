@@ -105,7 +105,7 @@ window.__ModuleLoader__.load({
 
         function BatchCard() {
             const [data, setData] = useState(null)     // { state, updatedAt } | null
-            const [folded, setFolded] = useState(false)
+            const [folded, setFolded] = useState(true)   // 默认折叠：只显示一行胶囊，点它展开
             const [gone, setGone] = useState(false)    // 👤 手动关闭（阶段变化时自动恢复）
             const lastPhase = useRef(null)
             const loggedError = useRef(false)
