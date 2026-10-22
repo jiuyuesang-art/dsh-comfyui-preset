@@ -447,8 +447,12 @@
     # Client 半在 plugin/batch-progress-client.js（package.json 的 dsh.client 声明），
     #   挂到 shell.overlay 槽位 —— 不打包、不需要重新构建 web。
     - id: batch-progress
-      # ⚠️ 同 study-gate：必须「裸包名 + 子路径」
-      name: 'dsh-comfyui-preset/plugin/batch-progress.js'
+      # 🔴 必须是**精确包名**，不能带子路径：
+      #    dsh-client-modules 的 locatePkgJson() 用 exactPackageSpecifier() 过滤，
+      #    非 scoped 的 specifier 只要含 "/" 就直接判定为「不是包」→ 该行丢弃
+      #    → 该包的 dsh.client 永远读不到 → client 半静默不加载（且无任何报错）。
+      #    host 半由 package.json 的 exports["."] 指向本文件。
+      name: 'dsh-comfyui-preset'
       config:
         # 指针超过这个时长就当没有活动批次（默认 6 小时）
         staleMs: 21600000

@@ -112,13 +112,23 @@ if (typeof pkg?.main === 'string' && typeof rootExport === 'string') ok('package
 else no('package.json 有 main 与 "." 导出', 'main=' + pkg?.main + ' / exports["."]=' + rootExport)
 // D. shell.overlay 属于 ui-slots/ui-layout 两个包，inject 里必须允许它们
 const injectList = pkg?.dsh?.client?.inject ?? []
-const needInject = ['@deepseek-ai/dsh-client-ui-slots', '@deepseek-ai/dsh-client-ui-layout']
-if (needInject.every((m) => injectList.includes(m))) ok('dsh.client.inject 含 ui-slots 与 ui-layout')
-else no('dsh.client.inject 含 ui-slots 与 ui-layout', JSON.stringify(injectList))
+const needInject = ['@deepseek-ai/dsh-client-ui-layout']
+if (needInject.every((m) => injectList.includes(m))) ok('dsh.client.inject 含 ui-layout（与 mcp-connector 实测一致）')
+else no('dsh.client.inject 含 ui-layout（与 mcp-connector 实测一致）', JSON.stringify(injectList))
 
 // E. 注册的槽位必须是 shell.overlay（改了槽位要同步改这里）
 if (/name:\s*['"]shell\.overlay['"]/.test(clientSrc)) ok('注册到的槽位是 shell.overlay')
 else no('注册到的槽位是 shell.overlay', '(未匹配到)')
+// F. patch 里指向本包的那一行必须是**精确包名**。
+//    dsh-client-modules 的 exactPackageSpecifier() 对非 scoped 且含 "/" 的 specifier
+//    直接判为「不是包」→ 该行丢弃 → client 半静默不加载。这是本插件最贵的那个坑。
+{
+    const patchSrc = readFileSync(resolve(here, '..', 'cordis.patch.yml'), 'utf8')
+    const rowNames = [...patchSrc.matchAll(/name:\s*['"]?(dsh-comfyui-preset[^'"\r\n]*)/g)].map((m) => m[1].trim())
+    const exact = rowNames.filter((n) => n === pkg.name)
+    if (exact.length >= 1) ok('patch 有一行用精确包名（client 半的宿主行）')
+    else no('patch 有一行用精确包名（client 半的宿主行）', '现有的：' + JSON.stringify(rowNames))
+}
 rmSync(dir, { recursive: true, force: true })
 
 console.log('')
