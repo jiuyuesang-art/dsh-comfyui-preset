@@ -16,14 +16,17 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import subprocess
 import sys
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 try:
-    from PIL import Image, ImageChops, ImageDraw, ImageFont
+    from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageStat
 except ImportError:
     sys.exit("缺少 Pillow。请先 pip install pillow，或用 load_workspace_dependencies 取捆绑 Python。")
 
@@ -281,6 +284,306 @@ def cmd_sheet(a) -> None:
     print(f"接触表 → {out}  ({sheet.width}x{sheet.height}, {len(paths)} 张)")
 
 
+# ── audit ───────────────────────────────────────────────────────────────────
+#
+# 为什么要有这一步：审查报告里的每一行结论都必须能指向**看得见的证据**（§0 红线②）。
+# 但"主体漂移 / 风格不一致 / 视频跳变"这类判断，只靠肉眼看图很容易写成印象。
+# 这里把它们先变成**数字**（哈希 / 差异百分比 / 变化区域 / 灰度与熵 / 调色板偏移 /
+# 相邻帧差），模型再据此下判定 —— 数字和画面互相印证，两头都能对得上。
+#
+# 设计约束同前：只写文件、不做交互；任何单项失败都不影响其它项（防御式）。
+
+def sha256_of(p: Path) -> str:
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _blank_flags(gray_std: float, entropy: float, uniq: int,
+                 near_black: float, near_white: float) -> list:
+    why = []
+    if gray_std < 3.0:
+        why.append(f"灰度标准差 {gray_std:.2f} < 3（几乎无起伏）")
+    if entropy < 1.5:
+        why.append(f"熵 {entropy:.2f} < 1.5（信息量极低）")
+    if uniq <= 4:
+        why.append(f"采样唯一色 {uniq} ≤ 4（纯色/近纯色）")
+    if near_black > 97.0:
+        why.append(f"近黑像素 {near_black:.1f}% > 97%（疑似黑帧）")
+    if near_white > 97.0:
+        why.append(f"近白像素 {near_white:.1f}% > 97%（疑似白帧）")
+    return why
+
+
+def image_facts(p: Path) -> dict:
+    st = p.stat()
+    f = {
+        "path": str(p), "name": p.name, "ext": p.suffix.lower(),
+        "bytes": st.st_size, "sha256": sha256_of(p),
+        "mtime": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    with Image.open(p) as raw:
+        f["format"] = raw.format
+        f["mode"] = raw.mode
+        f["width"], f["height"] = raw.size
+        has_a = raw.mode in ("RGBA", "LA") or (raw.mode == "P" and "transparency" in raw.info)
+        f["has_alpha"] = bool(has_a)
+        if has_a:
+            al = raw.convert("RGBA").getchannel("A")
+            mn, _mx = al.getextrema()
+            hist = al.histogram()
+            total = max(1, raw.size[0] * raw.size[1])
+            f["alpha_min"] = int(mn)
+            f["alpha_transparent_pct"] = round(100.0 * sum(hist[:250]) / total, 2)
+            f["alpha_used"] = bool(mn < 250)
+
+    im = open_rgb(p)
+    g = im.convert("L")
+    st_l = ImageStat.Stat(g)
+    f["gray_mean"] = round(st_l.mean[0], 2)
+    f["gray_std"] = round(st_l.stddev[0], 2)
+    _ent = g.entropy()
+    f["entropy"] = round(_ent, 3) if _ent > 1e-9 else 0.0
+
+    N = 160
+    small = im.resize((N, N), Image.BILINEAR)
+    cols = small.getcolors(maxcolors=N * N) or []
+    f["unique_colors_sampled"] = len(cols)
+    total_px = max(1, N * N)
+    if cols:
+        top = max(cols, key=lambda c: c[0])
+        f["dominant_rgb"] = [int(v) for v in top[1]]
+        f["dominant_pct"] = round(100.0 * top[0] / total_px, 2)
+    dark = sum(n for n, px in cols if sum(px[:3]) / 3.0 < 16)
+    light = sum(n for n, px in cols if sum(px[:3]) / 3.0 > 239)
+    f["near_black_pct"] = round(100.0 * dark / total_px, 2)
+    f["near_white_pct"] = round(100.0 * light / total_px, 2)
+
+    why = _blank_flags(f["gray_std"], f["entropy"], f["unique_colors_sampled"],
+                       f["near_black_pct"], f["near_white_pct"])
+    f["looks_blank"] = bool(why)
+    f["looks_blank_reason"] = why
+    return f
+
+
+def compare_facts(base: Path, cur: Path) -> dict:
+    """把"改了哪儿、改了多少"变成数字 + 定位到 3×3 区域，便于逐条指认。"""
+    b_im, c_im = open_rgb(base), open_rgb(cur)
+    out = {"baseline": str(base), "compared": str(cur)}
+    if b_im.size != c_im.size:
+        out["size_mismatch"] = True
+        out["baseline_size"] = list(b_im.size)
+        b_im = b_im.resize(c_im.size, Image.LANCZOS)
+
+    diff = ImageChops.difference(b_im, c_im).convert("L")
+    st = ImageStat.Stat(diff)
+    out["mean_abs_diff"] = round(st.mean[0], 2)
+    out["max_abs_diff"] = int(diff.getextrema()[1])
+
+    mask = diff.point(lambda v: 255 if v > 8 else 0)
+    hist = mask.histogram()
+    w, h = c_im.size
+    total = max(1, w * h)
+    out["changed_pct"] = round(100.0 * hist[255] / total, 2)
+
+    bbox = mask.getbbox()
+    if bbox:
+        out["changed_bbox_pct"] = [
+            round(100.0 * bbox[0] / w, 1), round(100.0 * bbox[1] / h, 1),
+            round(100.0 * bbox[2] / w, 1), round(100.0 * bbox[3] / h, 1),
+        ]
+        out["changed_bbox_note"] = "上 左 下 右（占画面百分比）"
+
+    grid = {}
+    for r in range(3):
+        row = []
+        for q in range(3):
+            sub = mask.crop((q * w // 3, r * h // 3, (q + 1) * w // 3, (r + 1) * h // 3))
+            sh = sub.histogram()
+            tot = max(1, sub.size[0] * sub.size[1])
+            row.append(round(100.0 * sh[255] / tot, 1))
+        grid[f"row{r + 1}"] = row
+    out["changed_by_region_pct"] = grid
+    out["region_note"] = "3×3 网格，row1=上排；每行左→右。主体漂移看这里"
+
+    sb, sc = ImageStat.Stat(b_im.convert("RGB")), ImageStat.Stat(c_im.convert("RGB"))
+    out["palette_delta_rgb"] = [round(sc.mean[i] - sb.mean[i], 1) for i in range(3)]
+    out["palette_note"] = "整体配色偏移（本次 - 基准），每通道 ±255；风格一致性看这里"
+    return out
+
+
+def video_facts(p: Path, count: int, workdir: Path) -> dict:
+    meta = probe(p)
+    vstream = next((s for s in meta.get("streams", []) if s.get("codec_type") == "video"), {})
+    astream = next((s for s in meta.get("streams", []) if s.get("codec_type") == "audio"), None)
+    dur = float(meta.get("format", {}).get("duration") or vstream.get("duration") or 0)
+
+    out = {
+        "path": str(p), "name": p.name, "bytes": p.stat().st_size, "sha256": sha256_of(p),
+        "duration": round(dur, 3), "width": vstream.get("width"), "height": vstream.get("height"),
+        "fps": round(eval_fps(vstream), 3), "video_codec": vstream.get("codec_name"),
+        "audio": ({"codec": astream.get("codec_name"), "channels": astream.get("channels"),
+                   "sample_rate": astream.get("sample_rate")} if astream else None),
+    }
+    if dur <= 0:
+        out["error"] = "无法确定时长，跳过抽帧与帧间分析"
+        return out
+
+    require("ffmpeg")
+    workdir.mkdir(parents=True, exist_ok=True)
+    n = max(2, count)
+    stamps = [dur * (i + 0.5) / n for i in range(n)]
+    frames = []
+    for i, t in enumerate(stamps, 1):
+        dst = workdir / f"audit_{i:03d}_{t:07.2f}s.png"
+        r = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-loglevel", "error", "-ss", f"{t:.3f}",
+             "-i", str(p), "-frames:v", "1", "-y", str(dst)],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if r.returncode == 0 and dst.exists():
+            frames.append(dst)
+    if not frames:
+        out["error"] = "抽帧全部失败"
+        return out
+
+    out["frames"] = [str(x) for x in frames]
+    hashes = [sha256_of(x) for x in frames]
+    out["unique_frames"] = len(set(hashes))
+    out["duplicate_frame_groups"] = sorted(
+        [hashes.count(h) for h in set(hashes) if hashes.count(h) > 1], reverse=True)
+
+    gs = [open_rgb(x).convert("L").resize((160, 160), Image.BILINEAR) for x in frames]
+    diffs = [round(ImageStat.Stat(ImageChops.difference(gs[i], gs[i + 1])).mean[0], 2)
+             for i in range(len(gs) - 1)]
+    out["adjacent_mean_diff"] = diffs
+    if diffs:
+        idx = diffs.index(max(diffs))
+        out["max_jump"] = {"between": f"帧{idx + 1}→帧{idx + 2}", "value": max(diffs)}
+        out["frozen_pairs"] = [i + 1 for i, d in enumerate(diffs) if d < 1.0]
+    # 首尾帧是否黑帧/白帧
+    for tag, im in (("first", frames[0]), ("last", frames[-1])):
+        g = open_rgb(im).convert("L")
+        s = ImageStat.Stat(g)
+        out[f"{tag}_frame_gray_std"] = round(s.stddev[0], 2)
+        out[f"{tag}_frame_blank"] = bool(s.stddev[0] < 3.0)
+    return out
+
+
+def _fmt_facts(f: dict) -> str:
+    if "frames" in f and "width" in f and "fps" in f:      # 视频
+        lines = [
+            f"{f['name']}  视频 {f['width']}x{f['height']} {f['duration']}s "
+            f"{f['fps']}fps {f['video_codec']}  {f['bytes'] / 1024:.0f} KB",
+            f"    sha256 {f['sha256'][:12]} · 音频 "
+            f"{'无' if not f['audio'] else f['audio']['codec'] + '/' + str(f['audio']['channels']) + 'ch/' + str(f['audio']['sample_rate']) + 'Hz'}",
+            f"    抽帧 {len(f.get('frames', []))} 帧 → 唯一 {f.get('unique_frames')} 帧"
+            + (f"（有重复：{f['duplicate_frame_groups']}）" if f.get("duplicate_frame_groups") else ""),
+            f"    相邻帧差 {f.get('adjacent_mean_diff')}（>8 视为可见跳变；<1 视为冻结）",
+            f"    最大跳变 {f.get('max_jump')} · 冻结帧对 {f.get('frozen_pairs')}",
+            f"    首帧 blank={f.get('first_frame_blank')} · 尾帧 blank={f.get('last_frame_blank')}",
+        ]
+        for x in f.get("frames", []):
+            lines.append(f"      frame → {x}")
+        return "\n".join(lines)
+    if "width" in f:                                       # 图片
+        lines = [
+            f"{f['name']}  {f['width']}x{f['height']} {f.get('format')}/{f.get('mode')}  "
+            f"{f['bytes'] / 1024:.0f} KB  sha256 {f['sha256'][:12]}  改动时间 {f['mtime']}",
+            f"    灰度 均值{f['gray_mean']} 标准差{f['gray_std']} · 熵{f['entropy']} · "
+            f"采样唯一色{f['unique_colors_sampled']} · 主色 rgb{tuple(f['dominant_rgb'])} {f['dominant_pct']}%",
+            f"    近黑{f['near_black_pct']}% 近白{f['near_white_pct']}% · alpha "
+            + (f"有(min={f['alpha_min']}, 透明{f['alpha_transparent_pct']}%)" if f.get("has_alpha") else "无"),
+        ]
+        if f["looks_blank"]:
+            lines.append("    🔴 looks_blank=True —— " + "；".join(f["looks_blank_reason"]))
+        return "\n".join(lines)
+    return json.dumps(f, ensure_ascii=False)
+
+
+def cmd_audit(a) -> None:
+    files, missing = [], []
+    for it in a.files:
+        p = Path(it)
+        if p.is_dir():
+            files += sorted(x for x in p.iterdir() if x.suffix.lower() in IMG_EXT | {".mp4", ".mov", ".webm", ".mkv"})
+        elif p.exists():
+            files.append(p)
+        else:
+            missing.append(str(p))
+    for m in missing:
+        print(f"  ⚠️ 跳过不存在的路径：{m}", file=sys.stderr)
+    if not files:
+        sys.exit("没有可审计的产物。")
+
+    video_ext = {".mp4", ".mov", ".webm", ".mkv", ".avi"}
+    workdir = Path(tempfile.mkdtemp(prefix="review-audit-"))
+    facts = []
+    for p in files:
+        try:
+            facts.append(video_facts(p, a.count, workdir) if p.suffix.lower() in video_ext
+                         else image_facts(p))
+        except SystemExit:
+            raise
+        except Exception as e:                              # 单项失败不影响其它项
+            facts.append({"path": str(p), "name": p.name, "error": f"{type(e).__name__}: {e}"})
+
+    # 重复产物：内容完全相同 = 你以为有两个候选，其实是一个
+    byhash = {}
+    for f in facts:
+        if f.get("sha256"):
+            byhash.setdefault(f["sha256"], []).append(f["name"])
+    dups = [v for v in byhash.values() if len(v) > 1]
+
+    baseline = None
+    if a.baseline:
+        bp = Path(a.baseline)
+        if not bp.exists():
+            print(f"  ⚠️ 基准不存在，跳过对比：{bp}", file=sys.stderr)
+        else:
+            first_img = next((f for f in facts if "width" in f and "fps" not in f), None)
+            if first_img:
+                try:
+                    baseline = compare_facts(bp, Path(first_img["path"]))
+                except Exception as e:
+                    print(f"  ⚠️ 对比失败：{type(e).__name__}: {e}", file=sys.stderr)
+
+    if a.as_json:
+        print(json.dumps({"files": facts, "duplicates": dups, "baseline_compare": baseline},
+                         ensure_ascii=False, indent=2))
+        return
+
+    print("== 产物事实审计（写进报告的证据栏，不要凭印象）==")
+    for i, f in enumerate(facts, 1):
+        print(f"[{i}] " + (f.get("error") and f"{f['name']}  🔴 审计失败：{f['error']}" or _fmt_facts(f)))
+    if dups:
+        print("\n🔴 内容完全相同的产物（同一张图被当成两个候选？）：")
+        for group in dups:
+            print("    " + "  ==  ".join(group))
+    if baseline:
+        print("\n== 与基准的差异（digits 可直接抄进报告）==")
+        print(f"  基准：{baseline['baseline']}"
+              + ("  ⚠️ 尺寸不同，已缩放对齐" if baseline.get("size_mismatch") else ""))
+        print(f"  变化像素 {baseline['changed_pct']}% · 平均绝对差 {baseline['mean_abs_diff']} "
+              f"· 峰值差 {baseline['max_abs_diff']}")
+        if baseline.get("changed_bbox_pct"):
+            print(f"  变化范围（上左下右 %）：{baseline['changed_bbox_pct']}")
+        print(f"  分区变化率 {baseline['changed_by_region_pct']}   ← 主体漂移看这里")
+        print(f"  配色偏移 {baseline['palette_delta_rgb']}   ← 风格一致性看这里")
+    print("\n判据提示：变化 <1% 且配色偏移 <2 → 基本没变（可能没生效，先查参数是否真的传进去了）")
+    print("         变化集中在某一格、其余为 0 → 只动了局部，逐条对照画面确认是不是你要的那块")
+
+    payload = {"files": facts, "duplicates": dups, "baseline_compare": baseline}
+    print("FACTS " + json.dumps(payload, ensure_ascii=False))
+    if a.out:
+        op = Path(a.out)
+        op.parent.mkdir(parents=True, exist_ok=True)
+        op.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"事实 JSON → {op}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="视觉审查工具")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -312,6 +615,14 @@ def main() -> None:
     s.add_argument("--title", default=None)
     s.add_argument("--max-width", type=int, default=1600, dest="max_width")
     s.set_defaults(func=cmd_sheet)
+
+    d = sub.add_parser("audit", help="产物事实审计：哈希 / 空白 / 重复 / 与基准的差异数字")
+    d.add_argument("files", nargs="+")
+    d.add_argument("--baseline", default=None, help="基准图（上一版 / 输入参考图）")
+    d.add_argument("--count", type=int, default=9, help="视频抽帧数（默认 9）")
+    d.add_argument("--json", action="store_true", dest="as_json", help="只输出 JSON")
+    d.add_argument("--out", default=None, help="把事实 JSON 落盘到该路径")
+    d.set_defaults(func=cmd_audit)
 
     a = ap.parse_args()
     a.func(a)

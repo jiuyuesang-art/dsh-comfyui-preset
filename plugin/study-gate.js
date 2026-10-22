@@ -44,7 +44,14 @@ export const DEFAULTS = {
   // 明确豁免的 server（放行、不要求 study）。
   // 用于那些「本身就是去取信息的」MCP —— 拦它们等于让 agent 没法学习。
   allowServers: [],
-  // 工作根候选（含 00_assets / 01_projects / 02_env 的那层）。空 = 从 cwd 向上探测。
+  // 工作根候选（含 00_assets / 01_projects / 02_env 的那层）。
+  //
+  // 空 = **跟随当前会话的项目目录**：先取 Session 的 workingDirectory（DSH 记录的真实
+  // 项目路径），再向上探测 00_assets / 01_projects / 02_env。这是默认行为，也是
+  // 「study 建在当前项目下」想要的效果 —— 不需要为每个工作区手写绝对路径。
+  //
+  // 显式写绝对路径 = 只认这些路径（多工作区固定场景）。
+  // 写相对路径 = 相对**当前项目目录**解析。
   workRoots: [],
   // 🔴 原档有了，还要求有总结吗？（默认 true）
   //
@@ -98,16 +105,70 @@ function findWorkRootFrom(start) {
   return null
 }
 
-function resolveWorkRoots(cfg) {
-  const out = []
-  for (const r of cfg.workRoots || []) {
-    // 🔴 只接受**真实存在**的工作根 —— 配置了一个不存在的路径时，
-    //    我们无法检查任何东西，此时必须放行（宁可漏拦，不可误伤）。
-    if (r && safe(() => fs.existsSync(r), false)) out.push(r)
+/**
+ * 当前会话的项目目录。
+ *
+ * 优先级：Session 的 workingDirectory（DSH 为每个会话记录的真实项目路径）
+ *        → 进程 cwd → 空。
+ *
+ * 为什么不能只用 process.cwd()：gate 跑在宿主进程里，那个 cwd 是**宿主自己的**
+ * 启动目录，不是用户当前打开的项目。用它等于永远检查错的地方。
+ */
+function sessionDir(ctx, exec) {
+  // ① Session 的 workingDirectory —— 正常路径
+  const dir = safe(() => {
+    const svc = ctx.get('workingDirectory')
+    if (!svc) return null
+    const session = exec?.agent?.session
+    if (!session) return null
+    const d = svc.get(session)
+    return typeof d === 'string' && d ? d : null
+  }, null)
+  if (dir) return dir
+
+  // ② 兜底：进程 cwd（单项目部署、或 Session 尚未记录目录时）
+  return safe(() => process.cwd(), '') || ''
+}
+
+/**
+ * 把一条配置解析成绝对工作根。
+ * 相对路径（含 '.'）相对**当前项目目录**；绝对路径原样。
+ * @returns 绝对路径，无法解析时 null
+ */
+function toAbsolute(entry, base) {
+  const r = String(entry ?? '').trim()
+  if (!r) return null
+  if (path.isAbsolute(r)) return r
+  if (!base) return null
+  return safe(() => path.resolve(base, r), null)
+}
+
+/**
+ * 解析工作根列表。
+ *
+ * - 配置为空 → **跟随当前项目**：项目里已有 00_assets/01_projects/02_env 就用
+ *   那个根；**一个都没有就用项目目录本身**（这样新项目/普通工作区也受管，
+ *   而不是因为"还没建目录"就整门失效）。
+ * - 配置相对路径 → 相对当前项目目录解析。
+ * - 配置绝对路径 → 原样。
+ *
+ * 显式配置时只返回**真实存在**的目录：配了不存在的路径无法检查任何东西，
+ * 此时必须放行（宁可漏拦，不可误伤）。
+ */
+function resolveWorkRoots(cfg, base) {
+  const entries = Array.isArray(cfg.workRoots) ? cfg.workRoots.filter(Boolean) : []
+
+  if (!entries.length) {
+    // 跟随当前项目：优先向上探测标准工作根，探测不到就用项目目录本身
+    const found = safe(() => findWorkRootFrom(base || process.cwd()), null)
+    const root = found || base
+    return root ? [root] : []
   }
-  if (!out.length) {
-    const d = safe(() => findWorkRootFrom(process.cwd()), null)
-    if (d) out.push(d)
+
+  const out = []
+  for (const entry of entries) {
+    const abs = toAbsolute(entry, base)
+    if (abs && safe(() => fs.existsSync(abs), false) && !out.includes(abs)) out.push(abs)
   }
   return out
 }
@@ -232,7 +293,13 @@ function buildDenyReason(kind, server, topic, roots) {
 
 // ── 主逻辑（导出以便离线测试）────────────────────────────────────────────
 
-export function evaluate(exec, cfg, passed) {
+/**
+ * @param exec - tool execution.
+ * @param cfg - merged config.
+ * @param passed - per-instance allow set.
+ * @param base - the session's project directory (see {@link sessionDir}).
+ */
+export function evaluate(exec, cfg, passed, base) {
   const toolName = String(exec?.name || '')
   if (!toolName.startsWith('mcp__')) return null
 
@@ -251,7 +318,7 @@ export function evaluate(exec, cfg, passed) {
   const key = `${exec?.agent?.id ?? '?'}|${server}`
   if (cfg.oncePerSession && passed.has(key)) return null
 
-  const roots = resolveWorkRoots(cfg)
+  const roots = resolveWorkRoots(cfg, base)
   if (!roots.length) return null // 找不到工作根 → 不拦（fail-safe）
 
   // 遍历工作根：原档 + 总结都对上才算过。
@@ -289,7 +356,7 @@ export function apply(ctx, config) {
 
     ctx.on('tools/pre-execute', async (exec, next) => {
       try {
-        const decision = evaluate(exec, cfg, passed)
+        const decision = evaluate(exec, cfg, passed, sessionDir(ctx, exec))
         if (decision) return decision
       } catch {
         // 任何异常 → 放行。宁可漏拦，不可误伤。
@@ -325,7 +392,7 @@ export function apply(ctx, config) {
 
         // 门禁刚放行说明文件齐；再确认一次，并在多个工作根里选命中的那个
         let block = null
-        for (const root of resolveWorkRoots(cfg)) {
+        for (const root of resolveWorkRoots(cfg, sessionDir(ctx, exec))) {
           const b = buildInjection(exec, cfg, root, topic)
           if (b) { block = b; break }
         }

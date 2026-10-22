@@ -1,6 +1,6 @@
 # 安装 / 更新后重新启用
 
-> 本 bundle 是 **DSH 的一个"预设包"**：一份 `cordis.patch.yml` + 8 个 skill 手册 + 若干脚本。
+> 本 bundle 是 **DSH 的一个"预设包"**：一份 `cordis.patch.yml` + 9 个 skill 手册 + 若干脚本。
 > 它不修改 DSH 本体，只往 profile 里注册一行预设。
 
 ---
