@@ -20,6 +20,9 @@ window.__ModuleLoader__.load({
         const API = '/api/comfy-batch/progress'
         const POLL_MS = 800
 
+        // 终态：这些阶段之后如果再出现 running/starting，说明是**新的**一批
+        const TERMINAL = { done: 1, partial: 1, failed: 1, aborted: 1 }
+
         const PHASE_TEXT = {
             starting: '准备中',
             running: '渲染中',
@@ -128,8 +131,12 @@ window.__ModuleLoader__.load({
                         const phase = active?.state?.phase ?? null
                         // 阶段切换（例如又开新批次）时把「已关闭」状态清掉
                         if (phase !== lastPhase.current) {
+                            const prev = lastPhase.current
                             lastPhase.current = phase
                             setGone(false)
+                            // 新一批开始（上一轮已结束 → 这次非终态）时自动回到折叠，
+                            // 于是「默认折叠」不只体现在启动时，也体现在每一批开始时。
+                            if (!TERMINAL[phase] && (prev === null || TERMINAL[prev])) setFolded(true)
                         }
                     } catch (error) {
                         if (alive) setData(null)
@@ -138,7 +145,6 @@ window.__ModuleLoader__.load({
                             loggedError.current = true
                             try { console.warn('[comfy-batch-progress] poll failed:', String(error)) } catch { }
                         }
-                        if (alive) setData(null)
                     } finally {
                         if (alive) timer = setTimeout(tick, POLL_MS)
                     }
