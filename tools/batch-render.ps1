@@ -198,6 +198,21 @@ function Save-Progress {
         [IO.File]::WriteAllText($tmp, $json, (New-Object Text.UTF8Encoding $false))
         Move-Item $tmp $progressPath -Force
     } catch { }
+
+    # 指针文件：给 DSH 界面里的浮层卡片用。
+    # Host 半（plugin/batch-progress.js）只读这个固定位置的指针，不扫盘找工作根。
+    try {
+        $ptrDir = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'dsh-comfy-batch'
+        New-Item -ItemType Directory -Force -Path $ptrDir | Out-Null
+        $ptrJson = @{
+            statePath = $progressPath
+            updatedAt = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+            plan      = $PlanPath
+        } | ConvertTo-Json -Compress
+        $ptmp = Join-Path $ptrDir 'active.tmp'
+        [IO.File]::WriteAllText($ptmp, $ptrJson, (New-Object Text.UTF8Encoding $false))
+        Move-Item $ptmp (Join-Path $ptrDir 'active.json') -Force
+    } catch { }
 }
 $script:startTs = [Diagnostics.Stopwatch]::GetTimestamp()
 

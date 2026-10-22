@@ -439,3 +439,16 @@
               #    交付门只认「当前项目」下 00_assets/01_projects 里的媒体产物。
               #    要固定到某几个目录时，再写绝对路径。
               workRoots: []
+
+    # ── 批量渲染进度：给 DSH 界面里的浮层卡片提供数据 ──────────────────────
+    # Host 半只注册一个只读路由 GET /api/comfy-batch/progress：
+    #   读 %LOCALAPPDATA%\dsh-comfy-batch\active.json（batch-render.ps1 写的指针）
+    #   → 再读指针里的 <计划名>.progress.json → 吐 JSON 给界面的浮层卡片。
+    # Client 半在 plugin/batch-progress-client.js（package.json 的 dsh.client 声明），
+    #   挂到 shell.overlay 槽位 —— 不打包、不需要重新构建 web。
+    - id: batch-progress
+      # ⚠️ 同 study-gate：必须「裸包名 + 子路径」
+      name: 'dsh-comfyui-preset/plugin/batch-progress.js'
+      config:
+        # 指针超过这个时长就当没有活动批次（默认 6 小时）
+        staleMs: 21600000

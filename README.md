@@ -84,7 +84,7 @@ DSH 的 `set_bundle` 两个方向**行为不对称**（实测确认）：
 | **1 个预设** | `id: comfyui`，显示名【ComfyUI 创作模式】，roster 排位 `order: 5` |
 | **9 个专家手册** | `comfyui-mcp-ops`（操作）· `comfyui-prompt-craft`（提示词 + 参考接线）· `comfyui-perf`（显存性能）· **`comfyui-media`（视频抽帧 / 图像编辑 / 音频处理）** · `comfyui-review`（视觉质检：**L0 事实 → L1 视觉 → L2 人**三级）· `comfyui-project-layout`（文件管理 + 生长式结构 + 资产表）· `art-reference`（参考检索）· **`study`（知识获取流程 —— 用到外部软件 / 模型时先查官方）** · **`comfyui-batch`（一次跑完 N 项：逐项提交/等待/每项重启复位显存，只在最后唤醒一次；带桌面状态栏）** |
 | **17 行插件** | persona · agent-instructions · pwsh/bash · fs · fs-search · jobs · skill-filesystem · tool-skill · compaction 组(3) · **delegation 组（subagent / subagent_fork，可指定模型）** · ask-user · todo · web · present · **study-gate** · **review-gate** |
-| **11 个工具脚本** | `verify-preset`（自检）· `pack-preset`（打包）· `run-python`（编码安全的 Python）· **`wait-job`（真推送等待）** · **`batch-render`（批量渲染：一次跑完 N 项）** · **`comfy-restart`（换进程复位显存）** · **`progress-window`（桌面状态栏）** · `check-encoding` · `asar-modules` · **`review-gate-selftest`（审查门离线干跑 46 项）** · **`batch-selftest`（批量计划解析离线干跑 14 项）** |
+| **12 个工具脚本** | `verify-preset`（自检）· `pack-preset`（打包）· `run-python`（编码安全的 Python）· **`wait-job`（真推送等待）** · **`batch-render`（批量渲染：一次跑完 N 项）** · **`comfy-restart`（换进程复位显存）** · **`progress-window`（桌面状态栏）** · **`batch-progress-selftest`（内嵌卡片 Host 半离线干跑 7 项）** · `check-encoding` · `asar-modules` · **`review-gate-selftest`（审查门离线干跑 46 项）** · **`batch-selftest`（批量计划解析离线干跑 14 项）** |
 
 ### 技术要点：MoE 式稀疏加载
 
@@ -347,6 +347,35 @@ MCP 是同步模型，`comfy-mcp` 不推进度。**让模型反复去问是最�
 > 产物下载全部正确；`/interrupt` 打断第 1 项时，第 1 项记为 `INTERRUPTED`、**第 2 项照常跑完**、
 > 末行 `BATCH_PARTIAL ok=1 fail=1`、退出码 1 —— 失败隔离符合预期。
 > 离线干跑 `tools/batch-selftest.ps1` 12 项（地址解析 / 种子递增 / 查重 / 各类非法计划）。
+
+### 🔴 技术要点：进度直接挂在 DSH 界面上
+
+除了独立小窗，进度还能**长在 DSH 自己的界面里**（`shell.overlay` 浮层，右下角）：
+
+```
+ComfyUI 批量渲染                   全部完成
+2 / 2   100%
+[━━━━━━━━━━━━━━━━━━━━]
+全部任务已结束
+成功 2 · 失败 0 · 总耗时 00:01:22 · 开始于 21:04:58
+```
+
+链路（三段，各管一件事）：
+
+| 段 | 文件 | 干什么 |
+|---|---|---|
+| 批次写状态 | `tools/batch-render.ps1` | 每次状态变化原子写 `<计划名>.progress.json`，并把路径写进固定指针 `%LOCALAPPDATA%\dsh-comfy-batch\active.json` |
+| Host 半 | `plugin/batch-progress.js` | 注册只读路由 `GET /api/comfy-batch/progress`：读指针 → 读状态 → 吐 JSON。**不扫盘、不改任何东西** |
+| Client 半 | `plugin/batch-progress-client.js` | `window.__ModuleLoader__.load(...)` 自注册，挂到 `shell.overlay`；800ms 轮询，收起/关闭，新批次自动出现 |
+
+**关键点：client 半是纯 JS，不需要打包，也不用重新构建 web 产物** ——
+用的是 DSH 的 client-modules 自注册格式（`require('react')` 由运行时解析），
+和 `dsh-process-monitor` 那类插件同一个机制。
+
+安全边界：路径必须以 `.progress.json` 结尾、指针超过 6 小时视为无活动批次、只读 GET。
+
+> ⚠️ 新增 client 半后，**要重启 DSH** 才会被加载（client 插件在启动时扫描）。
+> 自检：`node tools/batch-progress-selftest.mjs`（7 项，覆盖无指针 / 坏指针 / 路径被拒 / 缺失 / 过期 / 正常）。
 
 ### 技术要点：它怎么"不用思考"
 
