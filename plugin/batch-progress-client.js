@@ -108,6 +108,8 @@ window.__ModuleLoader__.load({
             const [folded, setFolded] = useState(false)
             const [gone, setGone] = useState(false)    // 👤 手动关闭（阶段变化时自动恢复）
             const lastPhase = useRef(null)
+            const loggedError = useRef(false)
+            const loggedOk = useRef(false)
 
             useEffect(() => {
                 let alive = true
@@ -119,13 +121,23 @@ window.__ModuleLoader__.load({
                         if (!alive) return
                         const active = payload?.active ?? null
                         setData(active)
+                        if (!loggedOk.current) {
+                            loggedOk.current = true
+                            try { console.log('[comfy-batch-progress] api ok, active=' + (active ? 'yes' : 'null')) } catch { }
+                        }
                         const phase = active?.state?.phase ?? null
                         // 阶段切换（例如又开新批次）时把「已关闭」状态清掉
                         if (phase !== lastPhase.current) {
                             lastPhase.current = phase
                             setGone(false)
                         }
-                    } catch {
+                    } catch (error) {
+                        if (alive) setData(null)
+                        // 只报一次，避免 800ms 刷屏
+                        if (alive && !loggedError.current) {
+                            loggedError.current = true
+                            try { console.warn('[comfy-batch-progress] poll failed:', String(error)) } catch { }
+                        }
                         if (alive) setData(null)
                     } finally {
                         if (alive) timer = setTimeout(tick, POLL_MS)
@@ -196,6 +208,7 @@ window.__ModuleLoader__.load({
         return {
             inject: ['slots'],
             apply(ctx) {
+                try { console.log('[comfy-batch-progress] mounted → shell.overlay') } catch { }
                 ctx.slots.inject('shell.overlay', () =>
                     ctx.slots.register(
                         { name: 'shell.overlay', id: 'comfy-batch-progress', order: 120, label: '批量渲染进度' },
